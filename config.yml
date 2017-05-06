@@ -1,0 +1,29 @@
+# Source machine
+source:
+  os: "mac"                        # OS
+  type: "local"                    # Type of source server
+
+# Destination machine
+destination:
+  os: "ubuntu"                     # OS
+  type: "aws"                      # Type of destination server
+
+  # How to setup machine
+  setup:
+    create: false                  # Create instance automatically
+    environment: false				     # Prepare installer environment (via Puppet)
+    test: true                     # Do tests
+    destroy: false                 # Destroy instance automatically
+
+  # AWS target
+  aws:
+    type: "t2.micro"               # Instance type
+    ami: "25a97a4a"                # Amazon AMI ID
+    key: "captain"                 # Keypair name (already added to AWS CLI)
+    security: "captain"            # Security group name
+    instance: ""                   # Instance ID (if already running)
+
+  # SSH details
+  ssh:
+    username: false                # Username (false = automatic)
+    key: "~/.ssh/captain/id_rsa"   # Keyfile used to SSH

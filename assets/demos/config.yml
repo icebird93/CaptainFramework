@@ -8,7 +8,7 @@ source:
   setup:
     test: true                     # Do tests
   finish:
-    destroy: false                 # Destroy instance automatically
+    destroy: true                  # Destroy instance automatically
 
   # Generic target
   generic:
@@ -16,7 +16,7 @@ source:
 
   # SSH details
   ssh:
-    username: "root"               # Username (false = automatic)
+    username: false                # Username (false = automatic)
     key: "~/.ssh/captain/id_rsa"   # Keyfile used to SSH
 
 # Destination machine
@@ -37,7 +37,15 @@ destination:
   generic:
     ip: "10.0.4.20"                # Instance IPv4 address
 
+  # AWS target
+  aws:
+    type: "t2.micro"               # Instance type
+    ami: "25a97a4a"                # Amazon AMI ID
+    key: "captain"                 # Keypair name (already added to AWS CLI)
+    security: "captain"            # Security group name
+    instance: ""                   # Instance ID (if already running)
+
   # SSH details
   ssh:
-    username: "root"               # Username (false = automatic)
+    username: false                # Username (false = automatic)
     key: "~/.ssh/captain/id_rsa"   # Keyfile used to SSH

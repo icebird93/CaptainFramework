@@ -71,7 +71,7 @@ class CaptainAws
 		return @ip
 	end
 
-	# Prepares LAMP environment
+	# Prepares environment
 	def setup_environment
 		puts "Preparing environment..."
 		puts "[INFO] This might take a few minutes"
@@ -104,6 +104,7 @@ class CaptainAws
 		puts debug if $debug
 
 		puts "[OK] Environment is ready"
+		return true
 	end
 
 	# Does tests
@@ -111,6 +112,7 @@ class CaptainAws
 		puts "Running tests..."
 		_log("setup_test")
 
+		puts "[OK] All done"
 		return true
 	end
 
@@ -123,6 +125,7 @@ class CaptainAws
 		_instance_stop(@instance)
 
 		puts "[OK] All instances stopped"
+		return true
 	end
 
 	###################

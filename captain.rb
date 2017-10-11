@@ -5,6 +5,9 @@ require 'date'
 # Internal dependencies
 require_relative 'include/configuration'
 require_relative 'include/base'
+
+# Type specific modules
+require_relative 'include/generic'
 require_relative 'include/aws'
 
 # Captain Framework orchestrator
@@ -34,6 +37,13 @@ class Captain
 		# Initialize configuration
 		_init_configuration
 
+		# Reset capabilities
+		@capabilities = {}
+
+		# Reset instances
+		@source = false
+		@destination = false
+
 		# Save current directory
 		$location = File.dirname(__FILE__)
 		puts "current directory: "+$location if $verbose
@@ -41,36 +51,25 @@ class Captain
 		puts "[OK] Captain initizalized"
 	end
 
-	# Control setup steps
+	# Control source setup steps
 	def destination_setup_step_add(step)
-		@config["destination"]["setup"][step] = true
+		@config["source"]["setup"][step] = true
 	end
 	def destination_setup_step_remove(step)
-		@config["destination"]["setup"][step] = false
+		@config["source"]["setup"][step] = false
 	end
 
-	# Setup (virtual) machine
-	def destination_setup()
+	# Setup source (virtual) machine
+	def source_setup
 		begin
 			# Check configuration
-			raise "destination not initialized" if !@config["destination"]
-
-			# Create destination instance
-			case @config["destination"]["type"]
-				when "aws"
-					@destination = CaptainAws.new(@config["destination"])
-				else
-					raise "Unsupported destination type "+@config["destination"]["type"]
-			end
+			raise "Source not defined" if !@config["source"]
 
 			# Confirmation
 			if !@confirm
 				# Display selected actions
-				puts "Following actions will be performed:"
-				puts "- Create" if @config["destination"]["setup"]["create"]
-				puts "- Prepare environment" if @config["destination"]["setup"]["environment"]
-				puts "- Tests" if @config["destination"]["setup"]["test"]
-				puts "- Destroy" if @config["destination"]["setup"]["destroy"]
+				puts "Following actions will be performed on SOURCE:"
+				puts "- Destroy (on finish)" if @config["source"]["finish"]["destroy"]
 
 				# Accept/Deny
 				print "Continue? [y/N] "
@@ -80,19 +79,84 @@ class Captain
 					puts "[INFO] Aborted by user"
 					exit
 				end
+			else
+				puts "[INFO] Preparing SOURCE"
 			end
 
-			@destination.setup_create if @config["destination"]["setup"]["create"]
-			@destination.setup_instance
-			@destination.setup_environment if @config["destination"]["setup"]["environment"]
-			@destination.setup_test if @config["destination"]["setup"]["test"]
-			@destination.setup_destroy if @config["destination"]["setup"]["destroy"]
+			# Destination
+			@source.setup_create if @config["source"]["setup"]["create"]
+			@source.setup_instance
+			@source.setup_capabilities
+			@source.setup_environment if @config["source"]["setup"]["environment"]
+			@source.setup_test if @config["source"]["setup"]["test"]
+
+			# Check destination
+			_capability_directssh if (@destination && @destination.get_ip)
 		rescue Exception => exception
 			_log(exception.message)
 			p exception if $verbose
-			puts "[ERROR] Machine setup failed"
+			puts "[ERROR] Source machine setup failed"
 			exit
 		end
+	end
+
+	# Control destination setup steps
+	def destination_setup_step_add(step)
+		@config["destination"]["setup"][step] = true
+	end
+	def destination_setup_step_remove(step)
+		@config["destination"]["setup"][step] = false
+	end
+
+	# Setup destination (virtual) machine
+	def destination_setup
+		begin
+			# Check configuration
+			raise "Destination not defined" if !@config["destination"]
+
+			# Confirmation
+			if !@confirm
+				# Display selected actions
+				puts "Following actions will be performed on DESTINATION:"
+				puts "- Create" if @config["destination"]["setup"]["create"]
+				puts "- Prepare environment" if @config["destination"]["setup"]["environment"]
+				puts "- Tests" if @config["destination"]["setup"]["test"]
+				puts "- Destroy (on finish)" if @config["destination"]["finish"]["destroy"]
+
+				# Accept/Deny
+				print "Continue? [y/N] "
+				response = STDIN.getch
+				puts ""
+				if !(response == 'y' || response == 'Y')
+					puts "[INFO] Aborted by user"
+					exit
+				end
+			else
+				puts "[INFO] Preparing DESTINATION"
+			end
+
+			# Destination
+			@destination.setup_create if @config["destination"]["setup"]["create"]
+			@destination.setup_instance
+			@destination.setup_capabilities
+			@destination.setup_environment if @config["destination"]["setup"]["environment"]
+			@destination.setup_test if @config["destination"]["setup"]["test"]
+
+			# Check source
+			_capability_directssh if (@source && @source.get_ip)
+		rescue Exception => exception
+			_log(exception.message)
+			p exception if $verbose
+			puts "[ERROR] Destination machine setup failed"
+			exit
+		end
+	end
+
+	# Finish
+	def finish
+		# Cleanup instances
+		@source.setup_destroy if @config["source"]["finish"]["destroy"]
+		@destination.setup_destroy if @config["destination"]["finish"]["destroy"]
 	end
 
 	###################
@@ -100,9 +164,26 @@ class Captain
 	###################
 	private
 
+	# Check direct SSH capability between source and destination
+	def _capability_directssh
+		# Prepare
+		@capabilities["directssh"] = {}
+
+		# Source -> Destination
+		_response = @source.command_send_remote(@destination.get_ip, "echo 'ok'")
+		@capabilities["directssh"]["source"] = (_response.eql? "ok")
+
+		# Destination -> Source
+		_response = @destination.command_send_remote(@source.get_ip, "echo 'ok'")
+		@capabilities["directssh"]["destination"] = (_response.eql? "ok")
+
+		p @capabilities if $debug
+		return (@capabilities["directssh"]["source"] && @capabilities["directssh"]["destination"])
+	end
+
 	# Log a custom text
 	def _log(line)
-		open($location+"/logs/captain.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M')+"] "+line+"\n") } if line.is_a?(String)
+		open($location+"/logs/captain.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M')+"] "+line+"\n") } if (line.is_a?(String) && !line.empty?)
 	end
 
 end

@@ -15,20 +15,45 @@ module CaptainConfiguration
 
 			# Prepare SSH config
 			for machine in ["source","destination"]
-				if (@config[machine]["ssh"]) && ((!@config[machine]["ssh"]["username"]) or (!@config[machine]["ssh"]["password"]))
-					# Select username and password, based on instance OS
-					case @config[machine]["os"]
-						when "ubuntu"
-							@config[machine]["ssh"]["username"] = "ubuntu"
-						when "mac"
-							raise "No username specified for "+machine+" server"
-						else
-							raise "Unsupported instance OS"
+				if @config[machine]["ssh"]
+					if ((!@config[machine]["ssh"]["username"]) || (@config[machine]["ssh"]["username"].eql? ""))
+						# Select username and password, based on instance OS
+						case @config[machine]["os"]
+							when "ubuntu"
+								@config[machine]["ssh"]["username"] = "ubuntu"
+							when "mac"
+								raise "No username specified for "+machine+" server"
+							else
+								raise "Unsupported instance OS"
+						end
 					end
 
 					# Check key file
+					raise "No SSH key specified" if ((!@config[machine]["ssh"]["key"]) || (@config[machine]["ssh"]["key"].eql? ""))
 					raise "SSH key file does not exist or is not a valid file" if (File.exist?(@config[machine]["ssh"]["key"])) || (File.file?(@config[machine]["ssh"]["key"]))
 				end
+			end
+
+			# Create source instance
+			if @config["source"]
+				case @config["source"]["type"]
+					when "aws"
+						@source = CaptainAws.new(@config["source"])
+					when "generic"
+						@source = CaptainGeneric.new(@config["source"])
+					else
+						raise "Unsupported source type "+@config["source"]["type"]
+				end
+			end
+
+			# Create destination instance
+			case @config["destination"]["type"]
+				when "aws"
+					@destination = CaptainAws.new(@config["destination"])
+				when "generic"
+					@destination = CaptainGeneric.new(@config["destination"])
+				else
+					raise "Unsupported destination type "+@config["destination"]["type"]
 			end
 
 			# Prepare setup steps
@@ -44,21 +69,8 @@ module CaptainConfiguration
 		end
 	end
 
-	# Enable/Disable component
-	def component_set(component, status)
-		raise ArgumentError, "Invalid component" unless ["create","environment","test","destroy"].include?(component)
-		raise ArgumentError, "Invalid component" unless !!status==status
-		@components[component] = status
-	end
-
-	# Select target instance
-	def instance_select(instance)
-		@instance = instance
-	end
-
 	# Accessors
-	attr_reader :configuration, :components
-	attr_accessor :verbose, :debug
+	attr_reader :config, :setup
 
 	###################
 	# Private methods #

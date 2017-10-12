@@ -60,23 +60,24 @@ module CaptainBase
 		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
 
 		# Prepare command
-		command = command.gsub("'", "'\"'\"'")
+		command = command.gsub('"', '\\"')
 		command = command.gsub('$', '\\$')
 
 		# Execute and return result
-		_ssh = `ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} -t #{@config["ssh"]["username"]}@#{@ip} '#{command}' 2>/dev/null`
+		_ssh = `ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} -t #{@config["ssh"]["username"]}@#{@ip} "#{command}" 2>/dev/null`
 		return _ssh.strip
 	end
 	def command_send_remote(ip, command)
 		# Execute command on target to remote
-		return command_send("ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -t #{ip} '#{command}' 2>/dev/null")
+		command = command.gsub('"', '\\"')
+		return command_send("ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -t #{ip} \"#{command}\" 2>/dev/null")
 	end
 
 	# Sends file to VM using predefined credientals
 	def file_send(source, destination)
 		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
 		raise "Local file does not exist" if File.exist?(source)
-		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} '#{source}' #{@config["ssh"]["username"]}@#{@ip}:'#{destination}' 2>/dev/null`
+		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} "#{source}" #{@config["ssh"]["username"]}@#{@ip}:"#{destination}" 2>/dev/null`
 		return _scp
 	end
 	def file_send_remote(ip, source, destination)
@@ -88,7 +89,7 @@ module CaptainBase
 	def file_retrieve(source, destination)
 		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
 		raise "Remote file is not accessible" if !(command_send("ls #{source} 2>&1 1>/dev/null | wc -l").eql? "0")
-		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:'#{source}' '#{destination}' 2>/dev/null`
+		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:"#{source}" "#{destination}" 2>/dev/null`
 		return _scp
 	end
 

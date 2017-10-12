@@ -1,4 +1,5 @@
 require 'io/console'
+require 'fileutils'
 
 # Captain Framework base class
 # @description Core functionality
@@ -56,7 +57,7 @@ module CaptainBase
 	# Sends command to VM instance for execution
 	def command_send(command)
 		# Check target
-		raise "Configuration not loaded or no VM is running" if (!@config["ssh"] or !@ip)
+		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
 
 		# Prepare command
 		command = command.gsub("'", "'\"'\"'")
@@ -73,8 +74,21 @@ module CaptainBase
 
 	# Sends file to VM using predefined credientals
 	def file_send(source, destination)
-		raise "Configuration not loaded or no VM is running" if (!@config["ssh"] or !@ip)
-		_scp = `scp -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} \"#{source}\" #{@config["ssh"]["username"]}@#{@ip}:\"#{destination}\" 2>/dev/null`
+		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
+		raise "Local file does not exist" if File.exist?(source)
+		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} '#{source}' #{@config["ssh"]["username"]}@#{@ip}:'#{destination}' 2>/dev/null`
+		return _scp
+	end
+	def file_send_remote(ip, source, destination)
+		# Send from from target to remote
+		command_send("scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 \"#{source}\" #{ip}:\"#{destination}\" 2>/dev/null")
+	end
+
+	# Retrieve file from VM
+	def file_retrieve(source, destination)
+		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
+		raise "Remote file is not accessible" if !(command_send("ls #{source} 2>&1 1>/dev/null | wc -l").eql? "0")
+		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:'#{source}' '#{destination}' 2>/dev/null`
 		return _scp
 	end
 

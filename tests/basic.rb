@@ -15,5 +15,10 @@ captain.source_setup
 # Setup target machine
 captain.destination_setup
 
+# Test
+#captain.copy_source_to_destination("/root/alma", "/root/alma")
+captain.copy_destination_to_source("/root/alma", "/root/alma")
+#captain.destination_retrieve_file("/root/alma", "alma")
+
 # Finish
 captain.finish

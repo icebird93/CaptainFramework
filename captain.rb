@@ -1,5 +1,7 @@
 # Dependencies
 require 'io/console'
+require 'fileutils'
+require 'tempfile'
 require 'date'
 
 # Internal dependencies
@@ -18,6 +20,10 @@ class Captain
 
 	# Include Configurator
 	include CaptainConfiguration
+
+	#########
+	# Setup #
+	#########
 
 	# Initializate, welcome user
 	# @parameters {params}
@@ -47,6 +53,9 @@ class Captain
 		# Save current directory
 		$location = File.dirname(__FILE__)
 		puts "current directory: "+$location if $verbose
+
+		# Initialize filesystem
+		_init_filesystem
 
 		puts "[OK] Captain initizalized"
 	end
@@ -159,10 +168,81 @@ class Captain
 		@destination.setup_destroy if @config["destination"]["finish"]["destroy"]
 	end
 
+	########################
+	# Container management #
+	########################
+
+	###################
+	# File management #
+	###################
+
+	# Send file to target
+	def source_send_file(local, remote)
+		@source.file_send(local, remote)
+	end
+	def destination_send_file(local, remote)
+		@destination.file_send(local, remote)
+	end
+
+	# Retrieve file from target
+	def source_retrieve_file(remote, local)
+		@source.file_retrieve(remote, local)
+	end
+	def destination_retrieve_file(remote, local)
+		@destination.file_retrieve(remote, local)
+	end
+
+	# Send file between target
+	def copy_source_to_destination(source, destination)
+		if @capabilities["directssh"]["source"]
+			# Send file directly from source to destination
+			@source.file_send_remote(@destination.get_ip, source, destination)
+		else
+			# Retrieve file and then send to destination
+			begin
+				tmp = Tempfile.new('copy', "/tmp/captain/transfers")
+				source_retrieve_file(source, tmp.path)
+				destination_send_file(tmp.path, destination)
+			rescue Exception => exception
+				_log(exception.message)
+				p exception if $verbose
+				puts "[ERROR] File could not be copied: [S] #{source} >> [D] #{destination}"
+			ensure
+				tmp.unlink
+			end
+		end
+	end
+	def copy_destination_to_source(destination, source)
+		if @capabilities["directssh"]["destination"]
+			# Send file directly from source to destination
+			@destination.file_send_remote(@source.get_ip, destination, source)
+		else
+			# Retrieve file and then send to source
+			begin
+				tmp = Tempfile.new('copy', "/tmp/captain/transfers")
+				destination_retrieve_file(destination, tmp.path)
+				source_send_file(tmp.path, source)
+			rescue Exception => exception
+				_log(exception.message)
+				p exception if $verbose
+				puts "[ERROR] File could not be copied: [D] #{destination} >> [S] #{source}"
+			ensure
+				tmp.unlink
+			end
+		end
+	end
+
 	###################
 	# Private methods #
 	###################
 	private
+
+	# Initialize filesystem (create necessary folder and files)
+	def _init_filesystem
+		# Temporary work directory
+		FileUtils::mkdir_p "/tmp/captain"
+		FileUtils::mkdir_p "/tmp/captain/transfers"
+	end
 
 	# Check direct SSH capability between source and destination
 	def _capability_directssh

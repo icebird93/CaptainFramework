@@ -7,6 +7,10 @@ require 'fileutils'
 # @requirements ruby(v2)
 module CaptainBase
 
+	#########
+	# Setup #
+	#########
+
 	# Initializate class
 	def initialize(config)
 		# Save config
@@ -16,6 +20,12 @@ module CaptainBase
 	# Config management
 	def get_config
 		return @config
+	end
+
+	# Required preparations
+	def setup_prepare
+		# Initialize filesystem
+		_init_filesystem
 	end
 
 	# Detect machine capabilities
@@ -49,6 +59,70 @@ module CaptainBase
 	def get_ip
 		return @ip
 	end
+
+	########################
+	# Container management #
+	########################
+
+	# Execute command in container
+	def docker_start_command(container, command, options)
+		# Check if running
+		_id = command_send("docker ps --no-trunc -q -f name=#{container} | tail -n 1")
+		return _id if (_id && !(_id.eql? ""))
+
+		# Start busybox container with command
+		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker run -d --name #{container} --security-opt seccomp=unconfined #{options} busybox #{command}")
+		p _id
+		return _id
+	end
+	def docker_create_command(container, command, options)
+		# Check if running
+		_id = command_send("docker ps --no-trunc -q -f name=#{container} | tail -n 1")
+		return _id if (_id && !(_id.eql? ""))
+
+		# Create busybox container with command
+		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker create --name #{container} --security-opt seccomp=unconfined #{options} busybox #{command}")
+		return _id
+	end
+
+	# Launch container
+	def docker_start_image(container, image, options)
+		# Check if running
+		_id = command_send("docker ps --no-trunc -q -f name=#{container} | tail -n 1")
+		return _id if (_id && !(_id.eql? ""))
+
+		# Start image
+		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker run -d --name #{container} --security-opt seccomp=unconfined #{options} #{image}")
+		return _id
+	end
+	def docker_create_image(container, image, options)
+		# Check if running
+		_id = command_send("docker ps --no-trunc -q -f name=#{container} | tail -n 1")
+		return _id if (_id && !(_id.eql? ""))
+
+		# Start image
+		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker create --name #{container} --security-opt seccomp=unconfined #{options} #{image}")
+		return _id
+	end
+
+	# Create and restore checkpoints
+	def docker_checkpoint_create(id, checkpoint)
+		return command_send("docker checkpoint create --checkpoint-dir=/tmp/captain/checkpoints/export #{id} #{checkpoint}")
+	end
+	def docker_checkpoint_restore(id, checkpoint)
+		return command_send("docker start --checkpoint-dir=/tmp/captain/checkpoints/import --checkpoint=#{checkpoint} #{id}")
+	end
+
+	# Get container ID by name
+	def docker_id(container)
+		return command_send("docker ps -a --no-trunc -q -f name=#{container} | tail -n 1")
+	end	
+
+	# Check container
+	def docker_check(id)
+		return false if command_send("docker ps -f id=#{id} | wc -l").eql? "1"
+		return true
+	end	
 
 	##################
 	# Helper methods #
@@ -126,6 +200,15 @@ module CaptainBase
 	# Private methods #
 	###################
 	private
+
+	# Initialize filesystem (create necessary folder and files)
+	def _init_filesystem
+		# Temporary work directory
+		command_send("mkdir -p /tmp/captain")
+		command_send("mkdir -p /tmp/captain/checkpoints")
+		command_send("mkdir -p /tmp/captain/checkpoints/export")
+		command_send("mkdir -p /tmp/captain/checkpoints/import")
+	end
 
 	# Check connection status
 	def _connection_status

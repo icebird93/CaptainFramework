@@ -95,6 +95,7 @@ class Captain
 			# Destination
 			@source.setup_create if @config["source"]["setup"]["create"]
 			@source.setup_instance
+			@source.setup_prepare
 			@source.setup_capabilities
 			@source.setup_environment if @config["source"]["setup"]["environment"]
 			@source.setup_test if @config["source"]["setup"]["test"]
@@ -147,6 +148,7 @@ class Captain
 			# Destination
 			@destination.setup_create if @config["destination"]["setup"]["create"]
 			@destination.setup_instance
+			@destination.setup_prepare
 			@destination.setup_capabilities
 			@destination.setup_environment if @config["destination"]["setup"]["environment"]
 			@destination.setup_test if @config["destination"]["setup"]["test"]
@@ -171,6 +173,84 @@ class Captain
 	########################
 	# Container management #
 	########################
+
+	# Execute command in container
+	def source_docker_start_command(container, command, options)
+		return @source.docker_start_command(container, command, options)
+	end
+	def destination_docker_start_command(container, command, options)
+		return @destination.docker_start_command(container, command, options)
+	end
+	def source_docker_create_command(container, command, options)
+		return @source.docker_create_command(container, command, options)
+	end
+	def destination_docker_create_command(container, command, options)
+		return @destination.docker_create_command(container, command, options)
+	end
+
+	# Launch container
+	def source_docker_start_image(container, image, options)
+		return @source.docker_start_image(container, image, options)
+	end
+	def destination_docker_start_image(container, image, options)
+		return @destination.docker_start_image(container, image, options)
+	end
+	def source_docker_create_image(container, image, options)
+		return @source.docker_create_image(container, image, options)
+	end
+	def destination_docker_create_image(container, image, options)
+		return @destination.docker_create_image(container, image, options)
+	end
+
+	# Container ID
+	def source_docker_id(container)
+		return @source.docker_id(container)
+	end
+	def destination_docker_id(container)
+		return @destination.docker_id(container)
+	end
+
+	#  Migrate container
+	def migrate_source_to_destination(source, destination)
+		# Check container first
+		if !@source.docker_check(source)
+			puts "[ERROR] Container is not running on source" 
+			return false
+		end
+
+		# Select "unique" checkpoint name
+		_checkpoint = Time.now.to_i
+
+		# Create checkpoint, transfer files and restore
+		@source.docker_checkpoint_create(source, _checkpoint)
+		start = Time.now
+		copy_source_to_destination("/tmp/captain/checkpoints/export/#{source}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
+		@destination.docker_checkpoint_restore(destination, _checkpoint)
+		finish = Time.now
+
+		puts "[INFO] Container migrated in #{finish - start} seconds"
+		return true
+	end
+	def migrate_destination_to_source(destination, source)
+		# Check container first
+		if !@destination.docker_check(destination)
+			puts "[ERROR] Container is not running on destination" 
+			return false
+		end
+
+		# Select "unique" checkpoint name
+		_checkpoint = Time.now.to_i
+
+		# Create checkpoint, transfer files and restore
+		@destination.docker_checkpoint_create(destination, _checkpoint)
+		start = Time.now
+		copy_destination_to_source("/tmp/captain/checkpoints/export/#{destination}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
+		@source.docker_checkpoint_restore(source, _checkpoint)
+		finish = Time.now
+
+		puts "[INFO] Container migrated in #{finish - start} seconds"
+		return true
+	end
 
 	###################
 	# File management #

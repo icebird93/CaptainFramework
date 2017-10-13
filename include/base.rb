@@ -65,7 +65,7 @@ module CaptainBase
 	########################
 
 	# Execute command in container
-	def docker_start_command(container, command, options)
+	def docker_start_command(container, command, options="")
 		# Check if running
 		_id = command_send("docker ps --no-trunc -q -f name=#{container} | tail -n 1")
 		return _id if (_id && !(_id.eql? ""))
@@ -75,7 +75,7 @@ module CaptainBase
 		p _id
 		return _id
 	end
-	def docker_create_command(container, command, options)
+	def docker_create_command(container, command, options="")
 		# Check if running
 		_id = command_send("docker ps --no-trunc -q -f name=#{container} | tail -n 1")
 		return _id if (_id && !(_id.eql? ""))
@@ -86,7 +86,7 @@ module CaptainBase
 	end
 
 	# Launch container
-	def docker_start_image(container, image, options)
+	def docker_start_image(container, image, options="")
 		# Check if running
 		_id = command_send("docker ps --no-trunc -q -f name=#{container} | tail -n 1")
 		return _id if (_id && !(_id.eql? ""))
@@ -95,7 +95,7 @@ module CaptainBase
 		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker run -d --name #{container} --security-opt seccomp=unconfined #{options} #{image}")
 		return _id
 	end
-	def docker_create_image(container, image, options)
+	def docker_create_image(container, image, options="")
 		# Check if running
 		_id = command_send("docker ps --no-trunc -q -f name=#{container} | tail -n 1")
 		return _id if (_id && !(_id.eql? ""))
@@ -141,29 +141,29 @@ module CaptainBase
 		_ssh = `ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} -t #{@config["ssh"]["username"]}@#{@ip} "#{command}" 2>/dev/null`
 		return _ssh.strip
 	end
-	def command_send_remote(ip, command)
+	def command_send_remote(ip_remote, command)
 		# Execute command on target to remote
 		command = command.gsub('"', '\\"')
-		return command_send("ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -t #{ip} \"#{command}\" 2>/dev/null")
+		return command_send("ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -t #{ip_remote} \"#{command}\" 2>/dev/null")
 	end
 
 	# Sends file to VM using predefined credientals
-	def file_send(source, destination)
+	def file_send(file_local, file_target)
 		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
-		raise "Local file does not exist" if File.exist?(source)
-		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} "#{source}" #{@config["ssh"]["username"]}@#{@ip}:"#{destination}" 2>/dev/null`
+		raise "Local file (#{source}) is not accessible" if (!(file_local[-1].eql? "/") && !(file_local[-2,2].eql? "/*") && !File.exist?(file_local))
+		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{file_local} #{@config["ssh"]["username"]}@#{@ip}:#{file_target} 2>/dev/null`
 		return _scp
 	end
-	def file_send_remote(ip, source, destination)
+	def file_send_remote(ip_remote, file_target, file_remote)
 		# Send from from target to remote
-		command_send("scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 \"#{source}\" #{ip}:\"#{destination}\" 2>/dev/null")
+		command_send("scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 #{file_target} #{ip_remote}:#{file_remote} 2>/dev/null")
 	end
 
 	# Retrieve file from VM
-	def file_retrieve(source, destination)
+	def file_retrieve(file_target, file_local)
 		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
-		raise "Remote file is not accessible" if !(command_send("ls #{source} 2>&1 1>/dev/null | wc -l").eql? "0")
-		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:"#{source}" "#{destination}" 2>/dev/null`
+		raise "Remote file (#{file_target}) is not accessible" if (!(file_target[-1].eql? "/") && !(file_target[-2,2].eql? "/*") && !(command_send("ls #{file_target} 2>&1 1>/dev/null | wc -l").eql? "0"))
+		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:#{file_target} #{file_local} 2>/dev/null`
 		return _scp
 	end
 

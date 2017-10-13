@@ -175,30 +175,30 @@ class Captain
 	########################
 
 	# Execute command in container
-	def source_docker_start_command(container, command, options)
+	def source_docker_start_command(container, command, options="")
 		return @source.docker_start_command(container, command, options)
 	end
-	def destination_docker_start_command(container, command, options)
+	def destination_docker_start_command(container, command, options="")
 		return @destination.docker_start_command(container, command, options)
 	end
-	def source_docker_create_command(container, command, options)
+	def source_docker_create_command(container, command, options="")
 		return @source.docker_create_command(container, command, options)
 	end
-	def destination_docker_create_command(container, command, options)
+	def destination_docker_create_command(container, command, options="")
 		return @destination.docker_create_command(container, command, options)
 	end
 
 	# Launch container
-	def source_docker_start_image(container, image, options)
+	def source_docker_start_image(container, image, options="")
 		return @source.docker_start_image(container, image, options)
 	end
-	def destination_docker_start_image(container, image, options)
+	def destination_docker_start_image(container, image, options="")
 		return @destination.docker_start_image(container, image, options)
 	end
-	def source_docker_create_image(container, image, options)
+	def source_docker_create_image(container, image, options="")
 		return @source.docker_create_image(container, image, options)
 	end
-	def destination_docker_create_image(container, image, options)
+	def destination_docker_create_image(container, image, options="")
 		return @destination.docker_create_image(container, image, options)
 	end
 
@@ -211,44 +211,30 @@ class Captain
 	end
 
 	#  Migrate container
-	def migrate_source_to_destination(source, destination)
+	def migrate_source_to_destination(id_source, id_destination)
 		# Check container first
-		if !@source.docker_check(source)
+		if !@source.docker_check(id_source)
 			puts "[ERROR] Container is not running on source" 
 			return false
 		end
 
-		# Select "unique" checkpoint name
-		_checkpoint = Time.now.to_i
+		# Migrate
+		_time = _migrate_source_to_destination_docker(id_source, id_destination)
 
-		# Create checkpoint, transfer files and restore
-		@source.docker_checkpoint_create(source, _checkpoint)
-		start = Time.now
-		copy_source_to_destination("/tmp/captain/checkpoints/export/#{source}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
-		@destination.docker_checkpoint_restore(destination, _checkpoint)
-		finish = Time.now
-
-		puts "[INFO] Container migrated in #{finish - start} seconds"
+		puts "[INFO] Container migrated in total #{_time['total']} seconds (copy: #{_time['copy']} seconds)"
 		return true
 	end
-	def migrate_destination_to_source(destination, source)
+	def migrate_destination_to_source(id_destination, id_source)
 		# Check container first
-		if !@destination.docker_check(destination)
+		if !@destination.docker_check(id_destination)
 			puts "[ERROR] Container is not running on destination" 
 			return false
 		end
 
-		# Select "unique" checkpoint name
-		_checkpoint = Time.now.to_i
+		# Migrate
+		_time = _migrate_destination_to_source_docker(id_destination, id_source)
 
-		# Create checkpoint, transfer files and restore
-		@destination.docker_checkpoint_create(destination, _checkpoint)
-		start = Time.now
-		copy_destination_to_source("/tmp/captain/checkpoints/export/#{destination}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
-		@source.docker_checkpoint_restore(source, _checkpoint)
-		finish = Time.now
-
-		puts "[INFO] Container migrated in #{finish - start} seconds"
+		puts "[INFO] Container migrated in total #{_time['total']} seconds (copy: #{_time['copy']} seconds)"
 		return true
 	end
 
@@ -257,56 +243,70 @@ class Captain
 	###################
 
 	# Send file to target
-	def source_send_file(local, remote)
-		@source.file_send(local, remote)
+	def source_send_file(local, target)
+		@source.file_send(local, target)
 	end
-	def destination_send_file(local, remote)
-		@destination.file_send(local, remote)
+	def destination_send_file(local, target)
+		@destination.file_send(local, target)
 	end
 
 	# Retrieve file from target
-	def source_retrieve_file(remote, local)
-		@source.file_retrieve(remote, local)
+	def source_retrieve_file(target, local)
+		@source.file_retrieve(target, local)
 	end
-	def destination_retrieve_file(remote, local)
-		@destination.file_retrieve(remote, local)
+	def destination_retrieve_file(target, local)
+		@destination.file_retrieve(target, local)
 	end
 
 	# Send file between target
-	def copy_source_to_destination(source, destination)
+	def copy_source_to_destination(file_source, file_destination)
 		if @capabilities["directssh"]["source"]
 			# Send file directly from source to destination
-			@source.file_send_remote(@destination.get_ip, source, destination)
+			@source.file_send_remote(@destination.get_ip, file_source, file_destination)
 		else
 			# Retrieve file and then send to destination
 			begin
+				_dir = @source.command_send("[ -d \"#{file_source}\" ] && echo \"folder\"").eql? "folder"
 				tmp = Tempfile.new('copy', "/tmp/captain/transfers")
-				source_retrieve_file(source, tmp.path)
-				destination_send_file(tmp.path, destination)
+				if _dir
+					File.delete(tmp.path)
+					Dir.mkdir(tmp.path)
+					@destination.command_send("[ -d \"#{file_destination}\" ] && rm -rf #{file_destination}")
+				end
+				source_retrieve_file(file_source + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""))
+				destination_send_file(tmp.path, file_destination)
 			rescue Exception => exception
 				_log(exception.message)
 				p exception if $verbose
-				puts "[ERROR] File could not be copied: [S] #{source} >> [D] #{destination}"
+				puts "[ERROR] File could not be copied: [S] #{file_source} >> [D] #{file_destination}"
 			ensure
+				FileUtils.rm_rf(tmp.path) if (_dir && File.exist?(tmp.path))
 				tmp.unlink
 			end
 		end
 	end
-	def copy_destination_to_source(destination, source)
+	def copy_destination_to_source(file_destination, file_source)
 		if @capabilities["directssh"]["destination"]
 			# Send file directly from source to destination
-			@destination.file_send_remote(@source.get_ip, destination, source)
+			@destination.file_send_remote(@source.get_ip, file_destination, file_source)
 		else
 			# Retrieve file and then send to source
 			begin
+				_dir = @destination.command_send("[ -d \"#{file_destination}\" ] && echo \"folder\"").eql? "folder"
 				tmp = Tempfile.new('copy', "/tmp/captain/transfers")
-				destination_retrieve_file(destination, tmp.path)
-				source_send_file(tmp.path, source)
+				if _dir
+					File.delete(tmp.path)
+					Dir.mkdir(tmp.path)
+					@source.command_send("[ -d \"#{file_source}\" ] && rm -rf #{file_source}")
+				end
+				destination_retrieve_file(file_destination + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""))
+				source_send_file(tmp.path, file_source)
 			rescue Exception => exception
 				_log(exception.message)
 				p exception if $verbose
-				puts "[ERROR] File could not be copied: [D] #{destination} >> [S] #{source}"
+				puts "[ERROR] File could not be copied: [D] #{file_destination} >> [S] #{file_source}"
 			ensure
+				FileUtils.rm_rf(tmp.path) if (_dir && File.exist?(tmp.path))
 				tmp.unlink
 			end
 		end
@@ -339,6 +339,56 @@ class Captain
 
 		p @capabilities if $debug
 		return (@capabilities["directssh"]["source"] && @capabilities["directssh"]["destination"])
+	end
+
+	# Migrations
+	def _migrate_source_to_destination_docker(id_source, id_destination)
+		# Select "unique" checkpoint name
+		_checkpoint = Time.now.to_i
+
+		# Prepare time measurement
+		_start = {}
+		_finish = {}
+
+		# Create checkpoint, transfer files and restore
+		_start["total"] = Time.now
+		@source.docker_checkpoint_create(id_source, _checkpoint)
+		_start["copy"] = Time.now
+		copy_source_to_destination("/tmp/captain/checkpoints/export/#{id_source}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
+		_finish["copy"] = Time.now
+		@destination.docker_checkpoint_restore(id_destination, _checkpoint)
+		_finish["total"] = Time.now
+
+		# Calculate processing time
+		_time = {}
+		_time["copy"] = _finish["copy"] - _start["copy"]
+		_time["total"] = _finish["total"] - _start["total"]
+
+		return _time
+	end
+	def _migrate_destination_to_source_docker(id_destination, id_source)
+		# Select "unique" checkpoint name
+		_checkpoint = Time.now.to_i
+
+		# Prepare time measurement
+		_start = {}
+		_finish = {}
+
+		# Create checkpoint, transfer files and restore
+		_start["total"] = Time.now
+		@destination.docker_checkpoint_create(id_destination, _checkpoint)
+		_start["copy"] = Time.now
+		copy_destination_to_source("/tmp/captain/checkpoints/export/#{id_destination}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
+		_finish["copy"] = Time.now
+		@source.docker_checkpoint_restore(id_source, _checkpoint)
+		_finish["total"] = Time.now
+
+		# Calculate processing time
+		_time = {}
+		_time["copy"] = _finish["copy"] - _start["copy"]
+		_time["total"] = _finish["total"] - _start["total"]
+
+		return _time
 	end
 
 	# Log a custom text

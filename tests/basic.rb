@@ -17,7 +17,7 @@ captain.destination_setup
 
 # Test
 #captain.copy_source_to_destination("/root/alma", "/root/alma")
-#captain.copy_destination_to_source("/root/alma", "/root/alma")
+#captain.copy_destination_to_source("/root/korte", "/root/korte")
 #captain.destination_retrieve_file("/root/alma", "alma")
 #captain.source_docker_start_command("looper3", "/bin/sh -c 'i=0; while true; do echo $i; i=$(expr $i + 1); sleep 1; done'")
 #captain.destination_docker_create_command("looper3", "/bin/sh -c 'i=0; while true; do echo $i; i=$(expr $i + 1); sleep 1; done'")

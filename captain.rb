@@ -100,9 +100,10 @@ class Captain
 			@source.setup_environment if @config["source"]["setup"]["environment"]
 			@source.setup_test if @config["source"]["setup"]["test"]
 
-			# Check destination
-			_capability_directssh if (@destination && @destination.get_ip)
+			# Finish setup if both source and destination are ready
+			_setup_finish if (@destination && @destination.get_ip)
 		rescue Exception => exception
+			@source = false
 			_log(exception.message)
 			p exception if $verbose
 			puts "[ERROR] Source machine setup failed"
@@ -153,9 +154,10 @@ class Captain
 			@destination.setup_environment if @config["destination"]["setup"]["environment"]
 			@destination.setup_test if @config["destination"]["setup"]["test"]
 
-			# Check source
-			_capability_directssh if (@source && @source.get_ip)
+			# Finish setup if both source and destination are ready
+			_setup_finish if (@source && @source.get_ip)
 		rescue Exception => exception
+			@destination = false
 			_log(exception.message)
 			p exception if $verbose
 			puts "[ERROR] Destination machine setup failed"
@@ -221,7 +223,8 @@ class Captain
 		# Migrate
 		_time = _migrate_source_to_destination_docker(id_source, id_destination)
 
-		puts "[INFO] Container migrated in total #{_time['total']} seconds (copy: #{_time['copy']} seconds)"
+		puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
+		puts "[OK] Container migrated in total #{_time['total']} seconds"
 		return true
 	end
 	def migrate_destination_to_source(id_destination, id_source)
@@ -234,7 +237,8 @@ class Captain
 		# Migrate
 		_time = _migrate_destination_to_source_docker(id_destination, id_source)
 
-		puts "[INFO] Container migrated in total #{_time['total']} seconds (copy: #{_time['copy']} seconds)"
+		puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
+		puts "[OK] Container migrated in total #{_time['total']} seconds"
 		return true
 	end
 
@@ -317,6 +321,34 @@ class Captain
 	###################
 	private
 
+	# Finish setup
+	def _setup_finish
+		# Check capabilities first
+		_check_capabilites
+
+		# Setup NFS
+		@nfs = false
+		if (@config["nfs"] && @config["nfs"]["enabled"])
+			if @capabilities["nfs"]["source"]
+				# Source to destination
+				@source.setup_nfs_server(@destination.get_ip)
+				@nfs = @destination.setup_nfs_client(@source.get_ip)
+				puts "[INFO] NFS: source >> destination" if $verbose
+			elsif @capabilities["nfs"]["destination"]
+				# Destination to source
+				@destination.setup_nfs_server(@source.get_ip)
+				@nfs = @source.setup_nfs_client(@destination.get_ip)
+				puts "[INFO] NFS: destination >> source" if $verbose
+			end
+			if @nfs
+				# Enable NFS actions
+				@source.nfs_enable
+				@destination.nfs_enable
+				puts "[OK] NFS share is ready"
+			end
+		end
+	end
+
 	# Initialize filesystem (create necessary folder and files)
 	def _init_filesystem
 		# Temporary work directory
@@ -324,7 +356,15 @@ class Captain
 		FileUtils::mkdir_p "/tmp/captain/transfers"
 	end
 
-	# Check direct SSH capability between source and destination
+	# Check capabilities between source and destination
+	def _check_capabilites
+		_capability_directssh
+		_capability_nfs
+
+		p @capabilities if $debug
+	end
+
+	# Check direct SSH capability
 	def _capability_directssh
 		# Prepare
 		@capabilities["directssh"] = {}
@@ -337,8 +377,33 @@ class Captain
 		_response = @destination.command_send_remote(@source.get_ip, "echo 'ok'")
 		@capabilities["directssh"]["destination"] = (_response.eql? "ok")
 
-		p @capabilities if $debug
 		return (@capabilities["directssh"]["source"] && @capabilities["directssh"]["destination"])
+	end
+
+	# Check NFS capability
+	def _capability_nfs
+		# Prepare
+		@capabilities["nfs"] = {}
+		@capabilities["nfs"]["server"] = {}
+		@capabilities["nfs"]["client"] = {}
+
+		# Get capabilites
+		_capabilities_source = @source.get_capabilities
+		_capabilities_destination = @destination.get_capabilities
+
+		# Check server roles
+		@capabilities["nfs"]["server"]["source"] = _capabilities_source["nfs"]["server"]
+		@capabilities["nfs"]["server"]["destination"] = _capabilities_destination["nfs"]["server"]
+		
+		# Check client roles
+		@capabilities["nfs"]["client"]["source"] = _capabilities_source["nfs"]["client"]
+		@capabilities["nfs"]["client"]["destination"] = _capabilities_destination["nfs"]["client"]
+
+		# Check modes
+		@capabilities["nfs"]["source"] = (@capabilities["nfs"]["server"]["source"] && @capabilities["nfs"]["client"]["destination"])
+		@capabilities["nfs"]["destination"] = (@capabilities["nfs"]["server"]["destination"] && @capabilities["nfs"]["client"]["source"])
+
+		return (@capabilities["nfs"]["source"] || @capabilities["nfs"]["destination"])
 	end
 
 	# Migrations
@@ -349,19 +414,23 @@ class Captain
 		# Prepare time measurement
 		_start = {}
 		_finish = {}
+		_time = {}
 
 		# Create checkpoint, transfer files and restore
 		_start["total"] = Time.now
 		@source.docker_checkpoint_create(id_source, _checkpoint)
-		_start["copy"] = Time.now
-		copy_source_to_destination("/tmp/captain/checkpoints/export/#{id_source}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
-		_finish["copy"] = Time.now
+		if @nfs
+			# Use NFS shares
+			_time["copy"] = 0
+		else
+			# Transfer files
+			_start["copy"] = Time.now
+			copy_source_to_destination("/tmp/captain/checkpoints/export/#{id_source}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
+			_finish["copy"] = Time.now
+			_time["copy"] = _finish["copy"] - _start["copy"]
+		end
 		@destination.docker_checkpoint_restore(id_destination, _checkpoint)
 		_finish["total"] = Time.now
-
-		# Calculate processing time
-		_time = {}
-		_time["copy"] = _finish["copy"] - _start["copy"]
 		_time["total"] = _finish["total"] - _start["total"]
 
 		return _time
@@ -373,19 +442,23 @@ class Captain
 		# Prepare time measurement
 		_start = {}
 		_finish = {}
+		_time = {}
 
 		# Create checkpoint, transfer files and restore
 		_start["total"] = Time.now
 		@destination.docker_checkpoint_create(id_destination, _checkpoint)
-		_start["copy"] = Time.now
-		copy_destination_to_source("/tmp/captain/checkpoints/export/#{id_destination}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
-		_finish["copy"] = Time.now
+		if @nfs
+			# Use NFS shares
+			_time["copy"] = 0
+		else
+			# Transfer files
+			_start["copy"] = Time.now
+			copy_destination_to_source("/tmp/captain/checkpoints/export/#{id_destination}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
+			_finish["copy"] = Time.now
+			_time["copy"] = _finish["copy"] - _start["copy"]
+		end
 		@source.docker_checkpoint_restore(id_source, _checkpoint)
 		_finish["total"] = Time.now
-
-		# Calculate processing time
-		_time = {}
-		_time["copy"] = _finish["copy"] - _start["copy"]
 		_time["total"] = _finish["total"] - _start["total"]
 
 		return _time

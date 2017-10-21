@@ -1,3 +1,7 @@
+# Global settings
+nfs:
+  enabled: true                    # NFS shares
+
 # Source machine
 source:
   os: "ubuntu"                     # OS

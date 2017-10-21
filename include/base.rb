@@ -7,20 +7,43 @@ require 'fileutils'
 # @requirements ruby(v2)
 module CaptainBase
 
-	#########
-	# Setup #
-	#########
+	###########
+	# Generic #
+	###########
 
 	# Initializate class
 	def initialize(config)
 		# Save config
 		@config = config
+		@nfs = false
 	end
 
 	# Config management
 	def get_config
 		return @config
 	end
+
+	# Capability management
+	def get_capabilities
+		return @capabilities
+	end
+
+	# IP management
+	def get_ip
+		return @ip
+	end
+
+	# NFS management
+	def nfs_enable
+		@nfs = true
+	end
+	def nfs_disable
+		@nfs = false
+	end
+
+	#########
+	# Setup #
+	#########
 
 	# Required preparations
 	def setup_prepare
@@ -50,14 +73,25 @@ module CaptainBase
 		return true
 	end
 
-	# Capability management
-	def get_capabilities
-		return @capabilities
-	end
+	# Setup NFS shares
+	def setup_nfs_server(ip_client)
+		# Setup target folder
+		command_send("mkdir -p /tmp/captain/nfs && chown nobody:nogroup /tmp/captain/nfs")
 
-	# IP management
-	def get_ip
-		return @ip
+		# Setup share
+		command_send("[ \"$(cat /etc/exports | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (echo '/tmp/captain/nfs #{ip_client}(rw,sync,no_subtree_check,no_root_squash)' >> /etc/exports && service nfs-kernel-server restart)")
+	end
+	def setup_nfs_client(ip_server)
+		# Setup target folder
+		command_send("mkdir -p /tmp/captain/nfs")
+
+		# Connect to server
+		command_send("[ \"$(mount | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (mount #{ip_server}:/tmp/captain/nfs /tmp/captain/nfs && sleep 5)")
+
+		# Check mounts
+		_mount = command_send("mount | grep '/tmp/captain/nfs' | wc -l")
+		return true if (_mount || (_mount.eql? "1"))
+		return false		
 	end
 
 	########################
@@ -107,9 +141,11 @@ module CaptainBase
 
 	# Create and restore checkpoints
 	def docker_checkpoint_create(id, checkpoint)
+		return command_send("mkdir -p /tmp/captain/nfs/checkpoints && docker checkpoint create --checkpoint-dir=/tmp/captain/nfs/checkpoints #{id} #{checkpoint} && mv /tmp/captain/nfs/checkpoints/#{id}/checkpoints/#{checkpoint} /tmp/captain/nfs/checkpoints/#{checkpoint} && rm -rf /tmp/captain/nfs/checkpoints/#{id}") if @nfs
 		return command_send("docker checkpoint create --checkpoint-dir=/tmp/captain/checkpoints/export #{id} #{checkpoint}")
 	end
 	def docker_checkpoint_restore(id, checkpoint)
+		return command_send("docker start --checkpoint-dir=/tmp/captain/nfs/checkpoints --checkpoint=#{checkpoint} #{id}") if @nfs
 		return command_send("docker start --checkpoint-dir=/tmp/captain/checkpoints/import --checkpoint=#{checkpoint} #{id}")
 	end
 
@@ -157,6 +193,10 @@ module CaptainBase
 	def file_send_remote(ip_remote, file_target, file_remote)
 		# Send from from target to remote
 		command_send("scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 #{file_target} #{ip_remote}:#{file_remote} 2>/dev/null")
+	end
+	def file_sync_remote(ip_remote, file_target, file_remote)
+		# Send from from target to remote
+		command_send("rsync -a #{file_target} #{ip_remote}:#{file_remote} 2>/dev/null")
 	end
 
 	# Retrieve file from VM
@@ -229,6 +269,9 @@ module CaptainBase
 	def _capability_environment
 		_check_hostname
 		_check_kernel
+		@capabilities["nfs"] = {}
+		@capabilities["nfs"]["server"] = _check_nfs_server
+		@capabilities["nfs"]["client"] = _check_nfs_client
 		@capabilities["docker"] = _check_docker
 		@capabilities["criu"] = _check_criu
 	end
@@ -247,6 +290,16 @@ module CaptainBase
 	def _check_kernel
 		_kernel = command_send("uname -r")
 		puts "Kernel: #{_kernel}"
+	end
+	def _check_nfs_server
+		_nfs = command_send("dpkg -l | grep nfs-kernel-server | wc -l")
+		return false if ((!_nfs) || (_nfs.eql? "0"))
+		return true
+	end
+	def _check_nfs_client
+		_nfs = command_send("dpkg -l | grep nfs-common | wc -l")
+		return false if ((!_nfs) || (_nfs.eql? "0"))
+		return true
 	end
 	def _check_docker
 		_docker = command_send("docker version -f \"{{.Server.Version}}\"")

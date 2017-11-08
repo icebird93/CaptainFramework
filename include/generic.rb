@@ -38,15 +38,6 @@ class CaptainGeneric
 		return @ip
 	end
 
-	# Prepares environment
-	def setup_environment
-		puts "Preparing environment..."
-		_log("setup_environment")
-
-		puts "[OK] Environment is ready"
-		return true
-	end
-
 	# Does tests
 	def setup_test
 		puts "Running tests..."

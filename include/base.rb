@@ -51,6 +51,22 @@ module CaptainBase
 		_init_filesystem
 	end
 
+	# Prepares environment
+	def setup_environment
+		puts "Preparing environment..."
+		puts "[INFO] This might take a few minutes"
+		_log("setup_environment")
+
+		# Install Puppet if needed
+		_setup_puppet
+
+		# Apply Puppet manifest
+		_setup_environment
+
+		puts "[OK] Environment is ready"
+		return true
+	end
+
 	# Detect machine capabilities
 	def setup_capabilities
 		puts "Detecting instance capabilities..."

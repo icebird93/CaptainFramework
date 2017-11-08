@@ -71,42 +71,6 @@ class CaptainAws
 		return @ip
 	end
 
-	# Prepares environment
-	def setup_environment
-		puts "Preparing environment..."
-		puts "[INFO] This might take a few minutes"
-		_log("setup_environment")
-
-		# Upload Puppet installer and run
-		file_send($location+"/assets/#{@config["os"]}/install-puppet.sh", "~/install-puppet.sh")
-		debug = command_send("cd; sudo chmod u+x install-puppet.sh; sudo ./install-puppet.sh; rm install-puppet.sh;")
-		_log(debug)
-		puts debug if $debug
-
-		# Wait until it reboots
-		retries = 10
-		sleep(10)
-		until (retries == 0) || (_instance_status(@instance).eql? "running") do
-			retries -= 1
-			sleep(10)
-		end
-
-		# Prepare manifest
-		manifest = File.read($location+"/assets/#{@config["os"]}/puppetfile.pp")
-		#manifest.gsub!('{mysql_root_username}', @sql["root"]["username"])
-		File.open($location+"/tmp/puppetfile.pp", "w"){ |f| f.write(manifest) }
-
-		# Upload Puppet manifest and apply
-		file_send($location+"/tmp/puppetfile.pp", "~/puppetfile.pp")
-		debug = command_send("cd; sudo puppet apply puppetfile.pp; rm puppetfile.pp;")
-		File.delete($location+"/tmp/puppetfile.pp")
-		_log(debug)
-		puts debug if $debug
-
-		puts "[OK] Environment is ready"
-		return true
-	end
-
 	# Does tests
 	def setup_test
 		puts "Running tests..."

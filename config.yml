@@ -1,6 +1,9 @@
 # Global settings
 nfs:
   enabled: true                    # NFS shares
+archiving:
+  tar: true                        # TAR transfer
+  zip: true                        # ZIP transfer
 
 # Source machine
 source:

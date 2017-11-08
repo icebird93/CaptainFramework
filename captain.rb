@@ -264,9 +264,17 @@ class Captain
 
 	# Send file between target
 	def copy_source_to_destination(file_source, file_destination)
+		# Select archiving mode
+		_archiving = false
+		if @config["archiving"]
+			_archiving = "tar" if @config["archiving"]["tar"] && @capabilities["archiving"]["tar"]
+			_archiving = "zip" if @config["archiving"]["zip"] && @capabilities["archiving"]["zip"]
+		end
+
+		# Copy
 		if @capabilities["directssh"]["source"]
 			# Send file directly from source to destination
-			@source.file_send_remote(@destination.get_ip, file_source, file_destination)
+			@source.file_send_remote(@destination.get_ip, file_source, file_destination, _archiving)
 		else
 			# Retrieve file and then send to destination
 			begin
@@ -277,8 +285,8 @@ class Captain
 					Dir.mkdir(tmp.path)
 					@destination.command_send("[ -d \"#{file_destination}\" ] && rm -rf #{file_destination}")
 				end
-				source_retrieve_file(file_source + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""))
-				destination_send_file(tmp.path, file_destination)
+				source_retrieve_file(file_source + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""), _archiving)
+				destination_send_file(tmp.path, file_destination, _archiving)
 			rescue Exception => exception
 				_log(exception.message)
 				p exception if $verbose
@@ -290,9 +298,17 @@ class Captain
 		end
 	end
 	def copy_destination_to_source(file_destination, file_source)
+		# Select archiving mode
+		_archiving = false
+		if @config["archiving"]
+			_archiving = "tar" if @config["archiving"]["tar"] && @capabilities["archiving"]["tar"]
+			_archiving = "zip" if @config["archiving"]["zip"] && @capabilities["archiving"]["zip"]
+		end
+
+		# Copy
 		if @capabilities["directssh"]["destination"]
 			# Send file directly from source to destination
-			@destination.file_send_remote(@source.get_ip, file_destination, file_source)
+			@destination.file_send_remote(@source.get_ip, file_destination, file_source, _archiving)
 		else
 			# Retrieve file and then send to source
 			begin
@@ -303,8 +319,8 @@ class Captain
 					Dir.mkdir(tmp.path)
 					@source.command_send("[ -d \"#{file_source}\" ] && rm -rf #{file_source}")
 				end
-				destination_retrieve_file(file_destination + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""))
-				source_send_file(tmp.path, file_source)
+				destination_retrieve_file(file_destination + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""), _archiving)
+				source_send_file(tmp.path, file_source, _archiving)
 			rescue Exception => exception
 				_log(exception.message)
 				p exception if $verbose
@@ -323,6 +339,8 @@ class Captain
 
 	# Finish setup
 	def _setup_finish
+		puts "Finishing setup..."
+
 		# Check capabilities first
 		_check_capabilites
 
@@ -333,12 +351,12 @@ class Captain
 				# Source to destination
 				@source.setup_nfs_server(@destination.get_ip)
 				@nfs = @destination.setup_nfs_client(@source.get_ip)
-				puts "[INFO] NFS: source >> destination" if $verbose
+				puts "[INFO] NFS: source (server) >> destination" if $verbose
 			elsif @capabilities["nfs"]["destination"]
 				# Destination to source
 				@destination.setup_nfs_server(@source.get_ip)
 				@nfs = @source.setup_nfs_client(@destination.get_ip)
-				puts "[INFO] NFS: destination >> source" if $verbose
+				puts "[INFO] NFS: destination (server) >> source" if $verbose
 			end
 			if @nfs
 				# Enable NFS actions
@@ -347,6 +365,12 @@ class Captain
 				puts "[OK] NFS share is ready"
 			end
 		end
+
+		# Get base Docker images
+		@source.docker_pull_image("busybox")
+		@destination.docker_pull_image("busybox")
+
+		puts "[OK] SOURCE and DESTINATION nodes are ready"
 	end
 
 	# Initialize filesystem (create necessary folder and files)
@@ -359,6 +383,7 @@ class Captain
 	# Check capabilities between source and destination
 	def _check_capabilites
 		_capability_directssh
+		_capability_archiving
 		_capability_nfs
 
 		p @capabilities if $debug
@@ -378,6 +403,24 @@ class Captain
 		@capabilities["directssh"]["destination"] = (_response.eql? "ok")
 
 		return (@capabilities["directssh"]["source"] && @capabilities["directssh"]["destination"])
+	end
+
+	# Check compression capabilities
+	def _capability_archiving
+		# Prepare
+		@capabilities["archiving"] = {}
+
+		# Get capabilites
+		_capabilities_source = @source.get_capabilities
+		_capabilities_destination = @destination.get_capabilities
+
+		# TAR
+		@capabilities["archiving"]["tar"] = ((_command('which tar | wc -l').eql? "1") && _capabilities_source["linux"]["archiving"]["tar"] && _capabilities_destination["linux"]["archiving"]["tar"])
+
+		# ZIP
+		@capabilities["archiving"]["zip"] = ((_command('echo $(($(which zip | wc -l) + $(which unzip | wc -l)))').eql? "2") && _capabilities_source["linux"]["archiving"]["zip"] && _capabilities_destination["linux"]["archiving"]["zip"])
+
+		return (@capabilities["archiving"]["tar"] || @capabilities["archiving"]["zip"])
 	end
 
 	# Check NFS capability
@@ -462,6 +505,12 @@ class Captain
 		_time["total"] = _finish["total"] - _start["total"]
 
 		return _time
+	end
+
+	# Run local command
+	def _command(command)
+		_ssh = `#{command}`
+		return _ssh.strip
 	end
 
 	# Log a custom text

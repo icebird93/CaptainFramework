@@ -105,8 +105,7 @@ module CaptainBase
 		return _id if (_id && !(_id.eql? ""))
 
 		# Start busybox container with command
-		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker run -d --name #{container} --security-opt seccomp=unconfined #{options} busybox #{command}")
-		p _id
+		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker run -d --name #{container} --security-opt seccomp=unconfined #{options} busybox #{command} | tail -n 1")
 		return _id
 	end
 	def docker_create_command(container, command, options="")
@@ -115,7 +114,7 @@ module CaptainBase
 		return _id if (_id && !(_id.eql? ""))
 
 		# Create busybox container with command
-		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker create --name #{container} --security-opt seccomp=unconfined #{options} busybox #{command}")
+		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker create --name #{container} --security-opt seccomp=unconfined #{options} busybox #{command} | tail -n 1")
 		return _id
 	end
 
@@ -126,7 +125,7 @@ module CaptainBase
 		return _id if (_id && !(_id.eql? ""))
 
 		# Start image
-		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker run -d --name #{container} --security-opt seccomp=unconfined #{options} #{image}")
+		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker run -d --name #{container} --security-opt seccomp=unconfined #{options} #{image} | tail -n 1")
 		return _id
 	end
 	def docker_create_image(container, image, options="")
@@ -135,7 +134,7 @@ module CaptainBase
 		return _id if (_id && !(_id.eql? ""))
 
 		# Start image
-		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker create --name #{container} --security-opt seccomp=unconfined #{options} #{image}")
+		_id = command_send("([ \"$(docker ps -a -f name=#{container} | wc -l)\" -eq 1 ] || docker rm -f #{container} &>/dev/null) && docker create --name #{container} --security-opt seccomp=unconfined #{options} #{image} | tail -n 1")
 		return _id
 	end
 
@@ -158,7 +157,12 @@ module CaptainBase
 	def docker_check(id)
 		return false if command_send("docker ps -f id=#{id} | wc -l").eql? "1"
 		return true
-	end	
+	end
+
+	# Get images
+	def docker_pull_image(image, tag="latest")
+		return command_send("[ \"$(docker images #{image}:#{tag} | wc -l)\" -gt 1 ] || docker pull #{image}:#{tag} &>/dev/null")
+	end
 
 	##################
 	# Helper methods #
@@ -184,26 +188,97 @@ module CaptainBase
 	end
 
 	# Sends file to VM using predefined credientals
-	def file_send(file_local, file_target)
+	def file_send(file_local, file_target, compressed=false)
 		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
 		raise "Local file (#{source}) is not accessible" if (!(file_local[-1].eql? "/") && !(file_local[-2,2].eql? "/*") && !File.exist?(file_local))
-		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{file_local} #{@config["ssh"]["username"]}@#{@ip}:#{file_target} 2>/dev/null`
+
+		# Send
+		if (compressed)
+			# Compress, send, uncompress
+			case compressed
+				when "tar"
+					# TAR
+					_tarname = Time.now.to_i
+					puts "[INFO] Sending #{file_local} using TAR archive" if $debug
+					`rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname #{file_local}) && tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename #{file_local}) && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} /tmp/captain/transfers/#{_tarname}.tar.gz #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_tarname}.tar.gz 2>/dev/null && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz`
+					_scp = `tar -xzf /tmp/captain/transfers/#{_tarname}.tar.gz -C $(dirname #{file_target}) && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz`
+				when "zip"
+					# ZIP
+					_zipname = Time.now.to_i
+					puts "[INFO] Sending #{file_local} using ZIP archive" if $debug
+					`rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname #{file_local}) && zip -rq /tmp/captain/transfers/#{_zipname}.zip $(basename #{file_local}) && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} /tmp/captain/transfers/#{_zipname}.zip #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_zipname}.zip 2>/dev/null && rm -f /tmp/captain/transfers/#{_zipname}.zip`
+					_scp = command_send("unzip /tmp/captain/transfers/#{_zipname}.zip -d $(dirname #{file_target}) && rm -f /tmp/captain/transfers/#{_zipname}.zip")
+				else
+					raise "Unsupported archiving type "+compressed
+			end
+		else
+			# Send uncompressed
+			puts "[INFO] Sending #{file_local}" if $debug
+			_scp = `scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{file_local} #{@config["ssh"]["username"]}@#{@ip}:#{file_target} 2>/dev/null`
+		end
 		return _scp
 	end
-	def file_send_remote(ip_remote, file_target, file_remote)
+	def file_send_remote(ip_remote, file_target, file_remote, compressed=false)
 		# Send from from target to remote
-		command_send("scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 #{file_target} #{ip_remote}:#{file_remote} 2>/dev/null")
+		if (compressed)
+			# Compress, send, uncompress
+			case compressed
+				when "tar"
+					# TAR
+					_tarname = Time.now.to_i
+					puts "[INFO] Transferring #{file_target} to #{ip_remote} using TAR archive" if $debug
+					command_send("rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname #{file_target}) && tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename #{file_target}) && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 /tmp/captain/transfers/#{_tarname}.tar.gz #{ip_remote}:/tmp/captain/transfers/#{_tarname}.tar.gz 2>/dev/null && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz")
+					command_send_remote(ip_remote, "tar -xzf /tmp/captain/transfers/#{_tarname}.tar.gz -C $(dirname #{file_remote}) && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz")
+				when "zip"
+					# ZIP
+					_zipname = Time.now.to_i
+					puts "[INFO] Transferring #{file_target} to #{ip_remote} using ZIP archive" if $debug
+					command_send("rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname #{file_target}) && zip -rq /tmp/captain/transfers/#{_zipname}.zip $(basename #{file_target}) && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 /tmp/captain/transfers/#{_zipname}.zip #{ip_remote}:/tmp/captain/transfers/#{_zipname}.zip 2>/dev/null && rm -f /tmp/captain/transfers/#{_zipname}.zip")
+					command_send_remote(ip_remote, "unzip /tmp/captain/transfers/#{_zipname}.zip -d $(dirname #{file_remote}) && rm -f /tmp/captain/transfers/#{_zipname}.zip")
+				else
+					raise "Unsupported archiving type "+compressed
+			end
+		else
+			# Send uncompressed
+			puts "[INFO] Transferring #{file_target} to #{ip_remote}" if $debug
+			command_send("scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 #{file_target} #{ip_remote}:#{file_remote} 2>/dev/null")
+		end
 	end
 	def file_sync_remote(ip_remote, file_target, file_remote)
 		# Send from from target to remote
+		puts "[INFO] Syncing #{file_target} to #{ip_remote}" if $debug
 		command_send("rsync -a #{file_target} #{ip_remote}:#{file_remote} 2>/dev/null")
 	end
 
 	# Retrieve file from VM
-	def file_retrieve(file_target, file_local)
+	def file_retrieve(file_target, file_local, compressed=false)
 		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
 		raise "Remote file (#{file_target}) is not accessible" if (!(file_target[-1].eql? "/") && !(file_target[-2,2].eql? "/*") && !(command_send("ls #{file_target} 2>&1 1>/dev/null | wc -l").eql? "0"))
-		_scp = `scp -r -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:#{file_target} #{file_local} 2>/dev/null`
+
+		# Retrieve
+		if (compressed)
+			# Compress, retrieve, uncompress
+			case compressed
+				when "tar"
+					# TAR
+					_tarname = Time.now.to_i
+					puts "[INFO] Retrieving #{file_target} using TAR archive" if $debug
+					command_send("rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname #{file_target}) && tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename #{file_target})")
+					_scp = `scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_tarname}.tar.gz /tmp/captain/transfers/#{_tarname}.tar.gz 2>/dev/null && tar -xzf /tmp/captain/transfers/#{_tarname}.tar.gz -C $(dirname #{file_local}) && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz`
+				when "zip"
+					# ZIP
+					_zipname = Time.now.to_i
+					puts "[INFO] Retrieving #{file_target} using ZIP archive" if $debug
+					command_send("rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname #{file_target}) && tar -czf /tmp/captain/transfers/#{_zipname}.zip $(basename #{file_target})")
+					_scp = `scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_zipname}.zip /tmp/captain/transfers/#{_zipname}.zip 2>/dev/null && unzip /tmp/captain/transfers/#{_zipname}.zip -d $(dirname #{file_local}) && /tmp/captain/transfers/#{_zipname}.zip`
+				else
+					raise "Unsupported archiving type "+compressed
+			end
+		else
+			# Retrieve uncompressed
+			puts "[INFO] Retrieving #{file_target}" if $debug
+			_scp = `scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:#{file_target} #{file_local} 2>/dev/null`
+		end
 		return _scp
 	end
 
@@ -245,6 +320,7 @@ module CaptainBase
 	def _init_filesystem
 		# Temporary work directory
 		command_send("mkdir -p /tmp/captain")
+		command_send("mkdir -p /tmp/captain/transfers")
 		command_send("mkdir -p /tmp/captain/checkpoints")
 		command_send("mkdir -p /tmp/captain/checkpoints/export")
 		command_send("mkdir -p /tmp/captain/checkpoints/import")
@@ -272,6 +348,8 @@ module CaptainBase
 		@capabilities["nfs"] = {}
 		@capabilities["nfs"]["server"] = _check_nfs_server
 		@capabilities["nfs"]["client"] = _check_nfs_client
+		@capabilities["linux"] = {}
+		@capabilities["linux"]["archiving"] = _check_archiving
 		@capabilities["docker"] = _check_docker
 		@capabilities["criu"] = _check_criu
 	end
@@ -291,6 +369,11 @@ module CaptainBase
 		_kernel = command_send("uname -r")
 		puts "Kernel: #{_kernel}"
 	end
+	def _check_archiving
+		_tar = command_send("which tar | wc -l")
+		_zip = command_send("echo $(($(which zip | wc -l) + $(which unzip | wc -l)))")
+		return { "tar" => (_tar.eql? "1"), "zip" => (_tar.eql? "2") }
+	end
 	def _check_nfs_server
 		_nfs = command_send("dpkg -l | grep nfs-kernel-server | wc -l")
 		return false if ((!_nfs) || (_nfs.eql? "0"))
@@ -305,14 +388,61 @@ module CaptainBase
 		_docker = command_send("docker version -f \"{{.Server.Version}}\"")
 		raise "Docker not installed or not running" if (!_docker || (_docker.eql? ""))
 		puts "Docker: #{_docker}"
-		return false if ((!_docker) || (_docker.eql? ""))
+		_experimental = command_send("docker version -f \"{{.Server.Experimental}}\"")
+		raise "Docker experimental mode should be enabled" if (!_experimental || !(_experimental.eql? "true"))
 		return true
 	end
 	def _check_criu
 		_criu = command_send("criu -V 2>/dev/null | awk \"{print $2}\"")
 		raise "CRIU not installed or not in PATH" if (!_criu || (_criu.eql? ""))
 		puts "CRIU: #{_criu}"
-		return false if (!_criu || (_criu.eql? ""))
+		return true
+	end
+
+	# Environmental setup
+	def _setup_puppet
+		return true unless command_send("which puppet | wc -l").eql? "0"
+
+		# Upload Puppet installer and run
+		file_send($location+"/assets/#{@config["os"]}/#{@config["version"]}/install-puppet.sh", "/tmp/captain/install-puppet.sh")
+		_debug = command_send("cd /tmp/captain; sudo chmod u+x install-puppet.sh; sudo ./install-puppet.sh;")
+		_log(_debug)
+		puts _debug if $debug
+
+		# Wait until it reboots
+		_retries = 10
+		sleep(10)
+		until (_retries == 0) || (_instance_status(@instance).eql? "running") do
+			_retries -= 1
+			sleep(10)
+		end
+
+		# Finish
+		command_send("rm -f /tmp/captain/install-puppet.sh")
+		return false if command_send("which puppet | wc -l").eql? "0"
+		return true
+	end
+	def _setup_environment
+		# Upload Puppet manifest and apply
+		file_send($location+"/assets/shared/puppet", "/tmp/captain/puppet")
+		file_send($location+"/assets/#{@config["os"]}/shared/initialize.pp", "/tmp/captain/puppet/#{@config["os"]}_initialize.pp")
+		file_send($location+"/assets/#{@config["os"]}/shared/docker.pp", "/tmp/captain/puppet/#{@config["os"]}_docker.pp")
+		file_send($location+"/assets/#{@config["os"]}/#{@config["version"]}/install.pp", "/tmp/captain/puppet/#{@config["os"]}_install.pp")
+		file_send($location+"/assets/#{@config["os"]}/#{@config["version"]}/finish.pp", "/tmp/captain/puppet/#{@config["os"]}_finish.pp")
+		_debug = command_send("sudo puppet apply /tmp/captain/puppet")
+		_log(_debug)
+		puts _debug if $debug
+
+		# Wait until it reboots
+		_retries = 10
+		sleep(10)
+		until (_retries == 0) || (_instance_status(@instance).eql? "running") do
+			_retries -= 1
+			sleep(10)
+		end
+
+		# Finish
+		command_send("rm -rf /tmp/captain/puppet")
 		return true
 	end
 

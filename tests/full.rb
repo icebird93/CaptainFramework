@@ -7,7 +7,7 @@ require_relative '../captain.rb'
 captain = Captain.new({verbose:true, debug:true, confirm:true})
 
 # Load configuration
-captain.load_configuration(File.expand_path('..', File.dirname(__FILE__))+'/config.yml')
+captain.load_configuration(File.expand_path('..', File.dirname(__FILE__))+'/tests/config.yml')
 
 # Setup target machine
 captain.source_setup

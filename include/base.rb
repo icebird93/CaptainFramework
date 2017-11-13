@@ -91,23 +91,41 @@ module CaptainBase
 
 	# Setup NFS shares
 	def setup_nfs_server(ip_client)
+		return true if (command_send("showmount -e localhost | grep '/tmp/captain/nfs' | wc -l").eql? "1")
+
 		# Setup target folder
 		command_send("mkdir -p /tmp/captain/nfs && chown nobody:nogroup /tmp/captain/nfs")
 
 		# Setup share
-		command_send("[ \"$(cat /etc/exports | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (echo '/tmp/captain/nfs #{ip_client}(rw,sync,no_subtree_check,no_root_squash)' >> /etc/exports && service nfs-kernel-server restart)")
+		command_send("[ \"$(cat /etc/exports | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (echo '/tmp/captain/nfs #{ip_client}(rw,sync,no_subtree_check,no_root_squash)' >> /etc/exports && exportfs -ra && sleep 10 && touch /tmp/captain/nfs/.check)")
+		command_send("[ \"$(grep -E '/tmp/captain/nfs.+fsid=' /etc/exports | wc -l)\" -eq 1 ] || sed -i 's|/tmp/captain/nfs 10.0.4.20(rw,sync,|/tmp/captain/nfs #{ip_client}(rw,fsid=1,sync,|i /etc/exports && exportfs -r") if @tmpfs
+
+		# Check exports
+		return false unless (command_send("showmount -e localhost | grep /tmp/captain/nfs | wc -l").eql? "1")
+		return true
 	end
 	def setup_nfs_client(ip_server)
+		return true if (command_send("mount | grep '/tmp/captain/nfs' | wc -l").eql? "1")
+
 		# Setup target folder
 		command_send("mkdir -p /tmp/captain/nfs")
 
 		# Connect to server
-		command_send("[ \"$(mount | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (mount #{ip_server}:/tmp/captain/nfs /tmp/captain/nfs && sleep 5)")
+		command_send("[ \"$(mount | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (mount #{ip_server}:/tmp/captain/nfs /tmp/captain/nfs && sleep 5 && touch /tmp/captain/nfs/.check)")
 
 		# Check mounts
 		_mount = command_send("mount | grep '/tmp/captain/nfs' | wc -l")
 		return true if (_mount || (_mount.eql? "1"))
 		return false		
+	end
+
+	# Finish setup
+	def setup_finish
+		# Setup TMPFS if needed
+		@tmpfs = false
+		@tmpfs = _setup_tmpfs if (@config["ramdisk"] && @config["ramdisk"]["enabled"])
+
+		return true
 	end
 
 	########################
@@ -335,9 +353,7 @@ module CaptainBase
 	# Initialize filesystem (create necessary folder and files)
 	def _init_filesystem
 		# Temporary work directory
-		command_send("mkdir -p /tmp/captain")
 		command_send("mkdir -p /tmp/captain/transfers")
-		command_send("mkdir -p /tmp/captain/checkpoints")
 		command_send("mkdir -p /tmp/captain/checkpoints/export")
 		command_send("mkdir -p /tmp/captain/checkpoints/import")
 	end
@@ -366,6 +382,8 @@ module CaptainBase
 		@capabilities["nfs"]["client"] = _check_nfs_client
 		@capabilities["linux"] = {}
 		@capabilities["linux"]["archiving"] = _check_archiving
+		@capabilities["linux"]["tmpfs"] = _check_tmpfs
+		@capabilities["linux"]["ram"] = _check_ram
 		@capabilities["docker"] = _check_docker
 		@capabilities["criu"] = _check_criu
 	end
@@ -389,6 +407,16 @@ module CaptainBase
 		_tar = command_send("which tar | wc -l")
 		_zip = command_send("echo $(($(which zip | wc -l) + $(which unzip | wc -l)))")
 		return { "tar" => (_tar.eql? "1"), "zip" => (_tar.eql? "2") }
+	end
+	def _check_tmpfs
+		_tmpfs = command_send("cat /proc/filesystems | grep -E '\Wtmpfs$' | wc -l")
+		return false if ((!_tmpfs) || (_tmpfs.eql? "0"))
+		return true
+	end
+	def _check_ram
+		_free = Integer(command_send("free -m | grep Mem: | awk '{print $4}'"))
+		_total = Integer(command_send("free -m | grep Mem: | awk '{print $2}'"))
+		return { "free" => _free, "total" => _total }
 	end
 	def _check_nfs_server
 		_nfs = command_send("dpkg -l | grep nfs-kernel-server | wc -l")
@@ -459,6 +487,15 @@ module CaptainBase
 
 		# Finish
 		command_send("rm -rf /tmp/captain/puppet")
+		return true
+	end
+
+	# Setup TMPFS working space
+	def _setup_tmpfs
+		return false if (!@config["ramdisk"] || !@config["ramdisk"]["enabled"])
+		return true if (command_send("mount | grep -E '/tmp/captain\W' | awk '{print $1}'").eql? "tmpfs")
+		_size = [(@config["ramdisk"]["size"] || 512), @capabilities["linux"]["ram"]["free"]].min
+		command_send("([ ! -d \"/tmp/captain\" ] || ([ ! -d \"/tmp/captain/nfs\" ] || umount -f /tmp/captain/nfs) && mv -f /tmp/captain /tmp/.captain 2>/dev/null || true) && mkdir /tmp/captain && mount -t tmpfs -o size=#{_size}m tmpfs /tmp/captain && mv /tmp/.captain/* /tmp/captain && rm -rf /tmp/.captain")
 		return true
 	end
 

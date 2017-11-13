@@ -26,6 +26,11 @@ source:
     username: "root"               # Username (false = automatic)
     key: "~/.ssh/captain/id_rsa"   # Keyfile used to SSH
 
+  # Tuning
+  ramdisk:
+    enabled: true                  # Use RAM as temporary storage for migration
+    size: 512                      # Size in MB
+
 # Destination machine
 destination:
   os: "ubuntu"                     # OS
@@ -48,3 +53,8 @@ destination:
   ssh:
     username: "root"               # Username (false = automatic)
     key: "~/.ssh/captain/id_rsa"   # Keyfile used to SSH
+
+  # Tuning
+  ramdisk:
+    enabled: true                  # Use RAM as temporary storage for migration
+    size: 512                      # Size in MB    

@@ -341,6 +341,10 @@ class Captain
 	def _setup_finish
 		puts "Finishing setup..."
 
+		# Finish node setups
+		@source.setup_finish
+		@destination.setup_finish
+
 		# Check capabilities first
 		_check_capabilites
 
@@ -349,13 +353,11 @@ class Captain
 		if (@config["nfs"] && @config["nfs"]["enabled"])
 			if @capabilities["nfs"]["source"]
 				# Source to destination
-				@source.setup_nfs_server(@destination.get_ip)
-				@nfs = @destination.setup_nfs_client(@source.get_ip)
+				@nfs = @source.setup_nfs_server(@destination.get_ip) && @destination.setup_nfs_client(@source.get_ip)
 				puts "[INFO] NFS: source (server) >> destination" if $verbose
 			elsif @capabilities["nfs"]["destination"]
 				# Destination to source
-				@destination.setup_nfs_server(@source.get_ip)
-				@nfs = @source.setup_nfs_client(@destination.get_ip)
+				@nfs = @destination.setup_nfs_server(@source.get_ip) && @source.setup_nfs_client(@destination.get_ip)
 				puts "[INFO] NFS: destination (server) >> source" if $verbose
 			end
 			if @nfs

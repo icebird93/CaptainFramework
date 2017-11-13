@@ -501,7 +501,7 @@ module CaptainBase
 
 	# Log a custom text
 	def _log(text)
-		open($location+"/logs/class.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M')+"] "+text+"\n") } if (text.is_a?(String) && !text.empty?)
+		open($location+"/logs/class.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+"] "+text+"\n") } if (text.is_a?(String) && !text.empty?)
 	end
 
 end

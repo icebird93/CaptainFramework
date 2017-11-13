@@ -224,8 +224,8 @@ class Captain
 		_time = _migrate_source_to_destination_docker(id_source, id_destination)
 
 		puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
-		puts "[OK] Container migrated in total #{_time['total']} seconds"
-		return true
+		puts "[OK] Container migrated (to DESTINATION) in total #{_time['total']} seconds"
+		return _time
 	end
 	def migrate_destination_to_source(id_destination, id_source)
 		# Check container first
@@ -238,8 +238,112 @@ class Captain
 		_time = _migrate_destination_to_source_docker(id_destination, id_source)
 
 		puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
-		puts "[OK] Container migrated in total #{_time['total']} seconds"
-		return true
+		puts "[OK] Container migrated (to SOURCE) in total #{_time['total']} seconds"
+		return _time
+	end
+
+	#########################
+	# Statistics management #
+	#########################
+
+	# Measure migration statistics
+	def stats_migration(config_stats, config_migration)
+		puts "[INFO] Checking stats_migration arguments" if $verbose
+
+		# Check configs
+		if (!config_stats || !config_migration)
+			puts "[ERROR] Invalid configuration (both configs are required)"
+			return false
+		end
+
+		# Check migration config
+		if (!config_migration["type"] || !(['command','image'].include? config_migration["type"]))
+			puts "[ERROR] Invalid migration type, supported: command/image"
+			return false
+		end
+
+		# Prepare
+		_iterations = config_stats["iterations"] || 3
+		_logfile = config_stats["log"] || $location+"/logs/stats.csv"
+		_min_to = _min_back = false
+		_max_to = _max_back = false
+		_avg_to = _avg_back = 0
+
+		# Create and start required containers
+		case config_migration["type"]
+			when "command"
+				source_docker_start_command(config_migration["name"], config_migration["command"], config_migration["options"]||"")
+				destination_docker_create_command(config_migration["name"], config_migration["command"], config_migration["options"]||"")
+			when "image"
+				source_docker_start_image(config_migration["name"], config_migration["image"], config_migration["options"]||"")
+				destination_docker_create_image(config_migration["name"], config_migration["image"], config_migration["options"]||"")
+		end
+
+		# Reset results file
+		File.truncate(_logfile, 0)
+
+		# Do iterations
+		_skipped = 0
+		for i in 0.._iterations
+			# Prepare iteration
+			if $debug
+				puts "[INFO] Warmup phase" if i==0
+				puts "[INFO] Iteration: #{i}" if i>0
+			end
+
+			# Migrate
+			_time_to = migrate_source_to_destination(source_docker_id(config_migration["name"]), destination_docker_id(config_migration["name"]))
+			_time_back = migrate_destination_to_source(destination_docker_id(config_migration["name"]), source_docker_id(config_migration["name"]))
+
+			# Check results
+			if (!_time_to || !_time_back)
+				if i>0
+					puts "[ERROR] Migration failed, skipping"
+					_skipped += 1
+				end
+				sleep(4)
+				next
+			end
+
+			# Save stats
+			_min_to = _time_to["total"] if (i==0 || _time_to["total"]<_max_to)
+			_min_back = _time_back["total"] if (i==0 || _time_back["total"]<_max_back)
+			_max_to = _time_to["total"] if (i==0 || _time_to["total"]>_max_to)
+			_max_back = _time_back["total"] if (i==0 || _time_back["total"]>_max_back)
+			_avg_to += _time_to["total"] if i>0
+			_avg_back += _time_back["total"] if i>0
+
+			# Log results
+			open(_logfile, 'a'){ |f| f.puts(i.to_s+";"+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+";"+_time_to["total"].round(4).to_s.chomp('.0')+";"+_time_back["total"].round(4).to_s.chomp('.0')+"\n") } if i>0
+
+			# Finish iteration
+			sleep(2)
+		end
+
+		# Finalize statistics
+		_min = [_min_to, _min_back].min
+		_max = [_max_to, _max_back].max
+		if _iterations-_skipped>0
+			_avg = (_avg_to + _avg_back) / (2 * (_iterations-_skipped))
+			_avg_to /= (_iterations-_skipped)
+			_avg_back /= (_iterations-_skipped)
+		end
+
+		# Show results
+		puts "[OK] Migrated successfully #{_iterations-_skipped} times"
+		if _iterations-_skipped>0
+			puts "SOURCE >> DESTINATION: #{_min_to.round(3)} / #{_avg_to.round(3)} / #{_max_to.round(3)}"
+			puts "DESTINATION >> SOURCE: #{_min_back.round(3)} / #{_avg_back.round(3)} / #{_max_back.round(3)}"
+			puts "Summarized: #{_min.round(3)} / #{_avg.round(3)} / #{_max.round(3)}"
+		end
+
+		# Finish
+		return { "to" => { "min" => _min_to.round(4), "avg" => _avg_to.round(4), "max" => _max_to.round(4) }, "back" => { "min" => _min_back.round(4), "avg" => _avg_back.round(4), "max" => _max_back.round(4) }, "summary" => { "min" => _min.round(4), "avg" => _avg.round(4), "max" => _max.round(4) } }
+	end
+
+	# Detailed statistics logging
+	def _log_stats(line)
+		open($location+"/logs/stats.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+"] "+line+"\n") } if (line.is_a?(String) && !line.empty?)
 	end
 
 	###################
@@ -517,7 +621,7 @@ class Captain
 
 	# Log a custom text
 	def _log(line)
-		open($location+"/logs/captain.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M')+"] "+line+"\n") } if (line.is_a?(String) && !line.empty?)
+		open($location+"/logs/captain.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+"] "+line+"\n") } if (line.is_a?(String) && !line.empty?)
 	end
 
 end

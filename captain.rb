@@ -168,6 +168,10 @@ class Captain
 	# Finish
 	def finish
 		# Cleanup instances
+		@source.setup_cleanup
+		@destination.setup_cleanup
+
+		# Destroy instances
 		@source.setup_destroy if @config["source"]["finish"]["destroy"]
 		@destination.setup_destroy if @config["destination"]["finish"]["destroy"]
 	end

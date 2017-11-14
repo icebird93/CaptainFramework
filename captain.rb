@@ -284,7 +284,7 @@ class Captain
 		end
 
 		# Reset results file
-		File.truncate(_logfile, 0)
+		File.truncate(_logfile, 0) if File.exist?(_logfile)
 
 		# Do iterations
 		_skipped = 0

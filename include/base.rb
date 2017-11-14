@@ -206,8 +206,8 @@ module CaptainBase
 	end
 
 	# Get container ID by name
-	def docker_id(container)
-		return command_send("docker ps -a --no-trunc -q -f name=#{container} | tail -n 1")
+	def docker_id(name)
+		return command_send("docker ps -a --no-trunc -f name=#{name} | grep '\\s#{name}$' | tail -n 1 | awk '{ print $1 }'")
 	end	
 
 	# Check container

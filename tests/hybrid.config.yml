@@ -1,6 +1,6 @@
 # Global settings
 nfs:
-  enabled: true                    # NFS shares
+  enabled: false                   # NFS shares
 archiving:
   tar: true                        # TAR transfer
   zip: true                        # ZIP transfer
@@ -35,26 +35,29 @@ source:
 destination:
   os: "ubuntu"                     # OS
   version: "16.04"                 # OS version (optional)
-  type: "generic"                  # Type of destination server
+  type: "aws"                      # Type of destination server
 
   # How to setup machine
   setup:
     create: false                  # Create instance automatically
-    environment: false				     # Prepare installer environment (via Puppet)
-    test: true                     # Do tests
+    environment: false 				     # Prepare installer environment (via Puppet)
+    test: false                    # Do tests
   finish:
     destroy: false                 # Destroy instance automatically
 
-  # Generic target
-  generic:
-    ip: "10.0.4.20"                # Instance IPv4 address
+  # AWS target
+  aws:
+    type: "t2.micro"               # Instance type
+    ami: "97e953f8"                # Amazon AMI ID (Ubuntu 16.04 LTS)
+    key: "captain"                 # Keypair name (already added to AWS CLI)
+    security: "captain"            # Security group name
+    instance: ""                   # Instance ID (if already running)
 
   # SSH details
   ssh:
-    username: "root"               # Username (false = automatic)
+    username: false                # Username (false = automatic)
     key: "~/.ssh/captain/id_rsa"   # Keyfile used to SSH
 
   # Tuning
   ramdisk:
-    enabled: true                  # Use RAM as temporary storage for migration
-    size: 512                      # Size in MB    
+    enabled: false                 # Use RAM as temporary storage for migration

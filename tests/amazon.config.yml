@@ -1,0 +1,66 @@
+# Global settings
+nfs:
+  enabled: false                    # NFS shares
+archiving:
+  tar: true                         # TAR transfer
+  zip: true                         # ZIP transfer
+
+# Source machine
+source:
+  os: "ubuntu"                      # OS
+  version: "16.04"                  # OS version (optional)
+  type: "aws"                       # Type of source server
+
+  # How to setup machine
+  setup:
+    test: true                      # Do tests
+  finish:
+    destroy: false                  # Destroy instance automatically
+
+  # AWS target
+  aws:
+    type: "t2.micro"                # Instance type
+    ami: "97e953f8"                 # Amazon AMI ID (Ubuntu 16.04 LTS)
+    key: "captain"                  # Keypair name (already added to AWS CLI)
+    security: "captain"             # Security group name
+    instance: "i-0506fc3ed371b33fa" # Instance ID (if already running)
+
+  # SSH details
+  ssh:
+    username: false                 # Username (false = automatic)
+    key: "~/.ssh/captain/id_rsa"    # Keyfile used to SSH
+
+  # Tuning
+  ramdisk:
+    enabled: false                  # Use RAM as temporary storage for migration
+
+# Destination machine
+destination:
+  os: "ubuntu"                      # OS
+  version: "16.04"                  # OS version (optional)
+  type: "aws"                       # Type of destination server
+
+  # How to setup machine
+  setup:
+    create: false                   # Create instance automatically
+    environment: false 				      # Prepare installer environment (via Puppet)
+    test: true                      # Do tests
+  finish:
+    destroy: false                  # Destroy instance automatically
+
+  # AWS target
+  aws:
+    type: "t2.micro"                # Instance type
+    ami: "97e953f8"                 # Amazon AMI ID (Ubuntu 16.04 LTS: 97e953f8, 17.04: 0114b06e)
+    key: "captain"                  # Keypair name (already added to AWS CLI)
+    security: "captain"             # Security group name
+    instance: "i-0527e2503bb5b932e" # Instance ID (if already running)
+
+  # SSH details
+  ssh:
+    username: false                 # Username (false = automatic)
+    key: "~/.ssh/captain/id_rsa"    # Keyfile used to SSH
+
+  # Tuning
+  ramdisk:
+    enabled: false                  # Use RAM as temporary storage for migration

@@ -7,7 +7,7 @@ require_relative '../captain.rb'
 captain = Captain.new({verbose:true, debug:true, confirm:true})
 
 # Load configuration
-captain.load_configuration(File.expand_path('..', File.dirname(__FILE__))+'/tests/config.yml')
+captain.load_configuration(File.expand_path('..', File.dirname(__FILE__))+'/tests/local.config.yml')
 
 # Check source
 captain.source_setup
@@ -15,7 +15,7 @@ captain.source_setup
 # Setup target machine
 captain.destination_setup
 
-# Test
+# Tests
 #captain.copy_source_to_destination("/root/alma", "/root/alma")
 #captain.copy_destination_to_source("/root/korte", "/root/korte")
 #captain.destination_retrieve_file("/root/alma", "alma")
@@ -27,7 +27,9 @@ captain.destination_setup
 #captain.destination_docker_create_image("memapp", "lm-tcpapp", '-e STRESS="-vm-bytes 1000M –vm-hang 0 -m 1 -c 1"')
 #captain.migrate_source_to_destination(captain.source_docker_id("memapp"), captain.destination_docker_id("memapp"))
 #captain.migrate_destination_to_source(captain.destination_docker_id("memapp"), captain.source_docker_id("memapp"))
-captain.stats_migration({"iterations" => 1, "log" => "/tmp/stats.memapp.csv"}, {"type" => "image", "name" => "memapp", "image" => "lm-tcpapp", "options" => '-e STRESS="-vm-bytes 1000M –vm-hang 0 -m 1 -c 1"'})
+
+# Do migration tests
+captain.stats_migration({"iterations" => 50, "log" => "/tmp/stats.local.csv"}, {"type" => "command", "name" => "looper", "command" => "/bin/sh -c 'i=0; while true; do echo $i; i=$(expr $i + 1); sleep 1; done'"})
 
 # Finish
 captain.finish

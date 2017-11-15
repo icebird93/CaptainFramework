@@ -80,7 +80,7 @@ class CaptainGeneric
 
 	# Stop instance
 	def _instance_stop
-		command_send("shutdown -P now") if _instance_status.eql? "running"
+		command_send("sudo shutdown -P now") if _instance_status.eql? "running"
 	end
 
 end

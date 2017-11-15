@@ -12,7 +12,7 @@ class captain::ubuntu_install {
 
 	# Install CRIU
 	netfile { '/tmp/captain/install/criu.deb':
-		remote_location => 'https://s3.eu-central-1.amazonaws.com/captain-framework/dependencies/ubuntu/17.10/criu_3.6_amd64.deb',
+		remote_location => "https://s3.eu-central-1.amazonaws.com/captain-framework/dependencies/ubuntu/17.10/criu_3.6_$::instance_type-amd64.deb",
 		mode => '0755',
 		before => Package['criu']
 	}

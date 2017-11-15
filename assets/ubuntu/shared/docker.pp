@@ -1,7 +1,7 @@
 # Install Docker
 class captain::ubuntu_docker($ubuntu_release) {
 	# Dependencies
-	package { ['apt-transport-https','ca-certificates','software-properties-common']:
+	package { ['apt-transport-https','ca-certificates','software-properties-common','cgroup-bin','cgroup-lite','cgroup-tools','cgroupfs-mount','libcgroup1']:
 		ensure => installed
 	} ->
 
@@ -27,6 +27,6 @@ class captain::ubuntu_docker($ubuntu_release) {
 
 	# Enable experimental
 	exec { 'docker_experimental':
-		command => '/bin/bash -c "[ \"$(grep -E \'^ExecStart=.*?--experimental=true\' docker.service | wc -l)\" -eq 1 ] || (sed -i \'s/^ExecStart=.*$/& --experimental=true/i\' /etc/systemd/system/multi-user.target.wants/docker.service && echo '{\"experimental\":true}' > /etc/docker/daemon.json && systemctl daemon-reload && service docker restart)"'
+		command => '/bin/bash -c "[ \"$(grep -E \'^ExecStart=.*?--experimental=true\' docker.service | wc -l)\" -eq 1 ] || (sed -i \'s/^ExecStart=.*$/& --experimental=true/i\' /etc/systemd/system/multi-user.target.wants/docker.service && echo \'{\"experimental\":true,\"storage-driver\":\"aufs\"}\' > /etc/docker/daemon.json && systemctl daemon-reload && service docker restart)"'
 	}
 }

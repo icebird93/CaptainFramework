@@ -96,8 +96,8 @@ class Captain
 			@source.setup_create if @config["source"]["setup"]["create"]
 			@source.setup_instance
 			@source.setup_prepare
-			@source.setup_capabilities
 			@source.setup_environment if @config["source"]["setup"]["environment"]
+			@source.setup_capabilities
 			@source.setup_test if @config["source"]["setup"]["test"]
 
 			# Finish setup if both source and destination are ready
@@ -106,7 +106,7 @@ class Captain
 			@source = false
 			_log(exception.message)
 			p exception if $verbose
-			puts "[ERROR] Source machine setup failed"
+			puts "[ERROR] SOURCE machine setup failed"
 			exit
 		end
 	end
@@ -150,8 +150,8 @@ class Captain
 			@destination.setup_create if @config["destination"]["setup"]["create"]
 			@destination.setup_instance
 			@destination.setup_prepare
-			@destination.setup_capabilities
 			@destination.setup_environment if @config["destination"]["setup"]["environment"]
+			@destination.setup_capabilities
 			@destination.setup_test if @config["destination"]["setup"]["test"]
 
 			# Finish setup if both source and destination are ready
@@ -160,7 +160,7 @@ class Captain
 			@destination = false
 			_log(exception.message)
 			p exception if $verbose
-			puts "[ERROR] Destination machine setup failed"
+			puts "[ERROR] DESTINATION machine setup failed"
 			exit
 		end
 	end
@@ -227,8 +227,13 @@ class Captain
 		# Migrate
 		_time = _migrate_source_to_destination_docker(id_source, id_destination)
 
-		puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
-		puts "[OK] Container migrated (to DESTINATION) in total #{_time['total']} seconds"
+		# Finish
+		if _time && (_time.has_key? "total")
+			puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
+			puts "[OK] Container migrated (to DESTINATION) in total #{_time['total']} seconds"
+		else
+			puts "[ERROR] Container cannot be migrated (to DESTINATION)"
+		end
 		return _time
 	end
 	def migrate_destination_to_source(id_destination, id_source)
@@ -241,8 +246,13 @@ class Captain
 		# Migrate
 		_time = _migrate_destination_to_source_docker(id_destination, id_source)
 
-		puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
-		puts "[OK] Container migrated (to SOURCE) in total #{_time['total']} seconds"
+		# Finish
+		if _time && (_time.has_key? "total")
+			puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
+			puts "[OK] Container migrated (to SOURCE) in total #{_time['total']} seconds"
+		else
+			puts "[ERROR] Container cannot be migrated (to SOURCE)"
+		end
 		return _time
 	end
 
@@ -287,7 +297,7 @@ class Captain
 		File.truncate(_logfile, 0) if File.exist?(_logfile)
 
 		# Do iterations
-		_skipped = 0
+		_skipped = _skipped_row = 0
 		for i in 0.._iterations
 			# Prepare iteration
 			if $debug
@@ -304,6 +314,11 @@ class Captain
 				if i>0
 					puts "[ERROR] Migration failed, skipping"
 					_skipped += 1
+				end
+				_skipped_row += 1
+				if _skipped_row>5
+					puts "[ERROR] Aborted migration tests due to consecutive errors"
+					return false
 				end
 				sleep(4)
 				next
@@ -375,8 +390,8 @@ class Captain
 		# Select archiving mode
 		_archiving = false
 		if @config["archiving"]
-			_archiving = "tar" if @config["archiving"]["tar"] && @capabilities["archiving"]["tar"]
 			_archiving = "zip" if @config["archiving"]["zip"] && @capabilities["archiving"]["zip"]
+			_archiving = "tar" if @config["archiving"]["tar"] && @capabilities["archiving"]["tar"]
 		end
 
 		# Copy
@@ -390,11 +405,10 @@ class Captain
 				tmp = Tempfile.new('copy', "/tmp/captain/transfers")
 				if _dir
 					File.delete(tmp.path)
-					Dir.mkdir(tmp.path)
 					@destination.command_send("[ -d \"#{file_destination}\" ] && rm -rf #{file_destination}")
 				end
-				source_retrieve_file(file_source + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""), _archiving)
-				destination_send_file(tmp.path, file_destination, _archiving)
+				@source.file_retrieve(file_source + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""), _archiving)
+				@destination.file_send(tmp.path, file_destination, _archiving)
 			rescue Exception => exception
 				_log(exception.message)
 				p exception if $verbose
@@ -409,8 +423,8 @@ class Captain
 		# Select archiving mode
 		_archiving = false
 		if @config["archiving"]
-			_archiving = "tar" if @config["archiving"]["tar"] && @capabilities["archiving"]["tar"]
 			_archiving = "zip" if @config["archiving"]["zip"] && @capabilities["archiving"]["zip"]
+			_archiving = "tar" if @config["archiving"]["tar"] && @capabilities["archiving"]["tar"]
 		end
 
 		# Copy
@@ -424,11 +438,10 @@ class Captain
 				tmp = Tempfile.new('copy', "/tmp/captain/transfers")
 				if _dir
 					File.delete(tmp.path)
-					Dir.mkdir(tmp.path)
 					@source.command_send("[ -d \"#{file_source}\" ] && rm -rf #{file_source}")
 				end
-				destination_retrieve_file(file_destination + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""), _archiving)
-				source_send_file(tmp.path, file_source, _archiving)
+				@destination.file_retrieve(file_destination + ((_dir) ? "/*" : ""), tmp.path + ((_dir) ? "/" : ""), _archiving)
+				@source.file_send(tmp.path, file_source, _archiving)
 			rescue Exception => exception
 				_log(exception.message)
 				p exception if $verbose
@@ -582,10 +595,12 @@ class Captain
 			_finish["copy"] = Time.now
 			_time["copy"] = _finish["copy"] - _start["copy"]
 		end
-		@destination.docker_checkpoint_restore(id_destination, _checkpoint)
+		_response = @destination.docker_checkpoint_restore(id_destination, _checkpoint)
 		_finish["total"] = Time.now
 		_time["total"] = _finish["total"] - _start["total"]
 
+		# Finish
+		return false if (_response.include? "error") || (_response.include? "Error")
 		return _time
 	end
 	def _migrate_destination_to_source_docker(id_destination, id_source)
@@ -610,10 +625,12 @@ class Captain
 			_finish["copy"] = Time.now
 			_time["copy"] = _finish["copy"] - _start["copy"]
 		end
-		@source.docker_checkpoint_restore(id_source, _checkpoint)
+		_response = @source.docker_checkpoint_restore(id_source, _checkpoint)
 		_finish["total"] = Time.now
 		_time["total"] = _finish["total"] - _start["total"]
 
+		# Finish
+		return false if (_response.include? "error") || (_response.include? "Error")
 		return _time
 	end
 

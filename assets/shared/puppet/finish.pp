@@ -2,6 +2,6 @@
 class captain::finish {
 	# Cleanup install files
 	exec { 'cleanup install':
-		command => 'rm -rf /tmp/captain/install'
+		command => '/bin/rm -rf /tmp/captain/install'
 	}
 }

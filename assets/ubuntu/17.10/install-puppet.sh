@@ -3,7 +3,7 @@ set -e
 
 # Prepare
 apt update -y
-apt upgrade -y
+DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --force-yes
 
 # Download and install Puppet for Debian (Jessie)
 wget https://apt.puppetlabs.com/puppetlabs-release-pc1-xenial.deb

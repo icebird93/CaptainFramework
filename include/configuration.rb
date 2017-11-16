@@ -30,7 +30,7 @@ module CaptainConfiguration
 
 					# Check key file
 					raise "No SSH key specified" if ((!@config[machine]["ssh"]["key"]) || (@config[machine]["ssh"]["key"].eql? ""))
-					raise "SSH key file does not exist or is not a valid file" if (File.exist?(@config[machine]["ssh"]["key"])) || (File.file?(@config[machine]["ssh"]["key"]))
+					raise "SSH key file does not exist or is not a valid file" if !(File.exist?(File.expand_path(@config[machine]["ssh"]["key"]))) || !(File.file?(File.expand_path(@config[machine]["ssh"]["key"])))
 				end
 			end
 

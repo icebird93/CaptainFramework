@@ -45,7 +45,7 @@ class CaptainAws
 		if !@setup["instance"]
 			# Checking instance
 			@instance = @config["aws"]["instance"] if !@instance
-			@instance = _instance_id if (!@instance) or (@instance.length==0)
+			@instance = _instance_id(@config["aws"]["ami"]) if (!@instance) or (@instance.length==0)
 			status = _instance_status(@instance)
 
 			# Start instance
@@ -61,10 +61,11 @@ class CaptainAws
 
 			# Get IP
 			puts "Getting public IP of instance..."
-			@ip = _instance_ip(@instance)
+			@ips = _instance_ip(@instance)
+			@ip = @ips["public"]
 			_log("instance accessible at #{@ip}")
 			@setup["instance"] = true
-			puts "[INFO] #{@instance} is accessible at #{@ip}" if $verbose
+			puts "[INFO] #{@instance} is accessible at #{@ip} (private IP: #{@ips['private']})" if $verbose
 		end
 
 		puts "[OK] Instance is ready"
@@ -90,6 +91,14 @@ class CaptainAws
 
 		puts "[OK] All instances stopped"
 		return true
+	end
+
+	# Get private IP address
+	def get_ip_public
+		return @ips["public"]
+	end
+	def get_ip_private
+		return @ips["private"]
 	end
 
 	###################
@@ -148,13 +157,16 @@ class CaptainAws
 
 	# Get public IP of instance	
 	def _instance_ip(instance)
-		ip = `aws ec2 describe-instances --instance-ids #{instance} --query "Reservations[0].Instances[0].PublicIpAddress" --output text 2>/dev/null`
-		return ip.strip
+		_public = `aws ec2 describe-instances --instance-ids #{instance} --query "Reservations[0].Instances[0].PublicIpAddress" --output text 2>/dev/null`
+		_private = `aws ec2 describe-instances --instance-ids #{instance} --query "Reservations[0].Instances[0].PrivateIpAddress" --output text 2>/dev/null`
+		return { "public" => _public.strip, "private" => _private.strip }
 	end
 
 	# Get instance ID for first VM
-	def _instance_id()
-		id = `aws ec2 describe-instances --query "Reservations[*].Instances[*].[State.Name, InstanceId]" --output text 2>/dev/null | grep "running" | awk '{print $2}'`
+	def _instance_id(ami="")
+		_filter = "Name=instance-state-name,Values=running"
+		_filter += " Name=image-id,Values=ami-#{ami}" if ami.length>0
+		id = `aws ec2 describe-instances --filters #{_filter} --query "Reservations[*].Instances[*].InstanceId" --output text 2>/dev/null | head -n 1`
 		return id.strip
 	end
 

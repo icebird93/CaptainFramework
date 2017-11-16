@@ -1,9 +1,11 @@
 # Global settings
 nfs:
-  enabled: false                    # NFS shares
+  enabled: true                     # NFS shares
 archiving:
-  tar: true                         # TAR transfer
-  zip: true                         # ZIP transfer
+  tar: false                        # TAR transfer
+  zip: false                        # ZIP transfer
+ssh:
+  key_inject: true                  # Inject SSH keys to source and destination if needed
 
 # Source machine
 source:

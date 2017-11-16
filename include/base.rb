@@ -78,6 +78,9 @@ module CaptainBase
 		@capabilities["root"] = _capability_root
 		@capabilities["sudo"] = _capability_sudo
 
+		# Check root privileges
+		raise "Root permissions (root user and/or sudo) are required to continue" if !@capabilities["root"] && !@capabilities["sudo"]
+
 		# Check environment
 		_capability_environment
 
@@ -91,22 +94,25 @@ module CaptainBase
 
 	# Setup NFS shares
 	def setup_nfs_server(ip_client)
+		puts "Configuring NFS server..." if $debug
+
 		# Setup target folder
-		command_send("mkdir -p /tmp/captain/nfs && chown nobody:nogroup /tmp/captain/nfs")
+		command_send("mkdir -p /tmp/captain/nfs && sudo chown nobody:nogroup /tmp/captain/nfs && sudo chmod 0777 /tmp/captain/nfs")
 
 		# Setup share
-		command_send("[ \"$(cat /etc/exports | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (echo '/tmp/captain/nfs #{ip_client}(rw,sync,no_subtree_check,no_root_squash)' >> /etc/exports && exportfs -ra && sleep 10 && touch /tmp/captain/nfs/.check)")
-		command_send("[ \"$(grep -E '/tmp/captain/nfs.+fsid=' /etc/exports | wc -l)\" -eq 1 ] || sed -i 's|/tmp/captain/nfs #{ip_client}(rw,sync,|/tmp/captain/nfs #{ip_client}(rw,fsid=1,sync,|i' /etc/exports && exportfs -r && sleep 1") if @tmpfs
+		command_send("[ \"$(cat /etc/exports | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (echo '/tmp/captain/nfs #{ip_client}(rw,sync,no_subtree_check,no_root_squash)' | sudo tee --append /etc/exports >/dev/null && sudo systemctl restart nfs-kernel-server && sleep 10 && touch /tmp/captain/nfs/.check)")
+		command_send("[ \"$(grep -E '/tmp/captain/nfs.+fsid=' /etc/exports | wc -l)\" -eq 1 ] || sudo sed -i 's|/tmp/captain/nfs #{ip_client}(rw,sync,|/tmp/captain/nfs #{ip_client}(rw,fsid=1,sync,|i' /etc/exports && sudo exportfs -r && sleep 1") if @tmpfs
 
 		# Check exports
 		return false unless (command_send("sudo showmount -e localhost | grep /tmp/captain/nfs | wc -l").eql? "1")
 		return true
 	end
 	def setup_nfs_client(ip_server)
+		puts "Configuring NFS client..." if $debug
 		return true if (command_send("sudo mount | grep '/tmp/captain/nfs' | wc -l").eql? "1")
 
 		# Setup target folder
-		command_send("mkdir -p /tmp/captain/nfs")
+		command_send("mkdir -p /tmp/captain/nfs && sudo chmod 0777 /tmp/captain/nfs")
 
 		# Connect to server
 		command_send("[ \"$(sudo mount | grep '/tmp/captain/nfs' | wc -l)\" -eq 1 ] || (sudo mount #{ip_server}:/tmp/captain/nfs /tmp/captain/nfs && sleep 5 && touch /tmp/captain/nfs/.check)")
@@ -138,10 +144,10 @@ module CaptainBase
 		# TMPFS
 		if (@config["ramdisk"] && @config["ramdisk"]["enabled"])
 			# Enable
-			_setup_tmpfs
+			@tmpfs = _setup_tmpfs
 		else
 			# Disable
-			_destroy_tmpfs
+			@tmpfs = _destroy_tmpfs
 		end
 
 		return true
@@ -197,12 +203,12 @@ module CaptainBase
 
 	# Create and restore checkpoints
 	def docker_checkpoint_create(id, checkpoint)
-		return command_send("mkdir -p /tmp/captain/nfs/checkpoints && sudo docker checkpoint create --checkpoint-dir=/tmp/captain/nfs/checkpoints #{id} #{checkpoint} && mv /tmp/captain/nfs/checkpoints/#{id}/checkpoints/#{checkpoint} /tmp/captain/nfs/checkpoints/#{checkpoint} && rm -rf /tmp/captain/nfs/checkpoints/#{id}") if @nfs
+		return command_send("mkdir -p /tmp/captain/nfs/checkpoints && sudo docker checkpoint create --checkpoint-dir=/tmp/captain/nfs/checkpoints #{id} #{checkpoint} && sudo mv /tmp/captain/nfs/checkpoints/#{id}/checkpoints/#{checkpoint} /tmp/captain/nfs/checkpoints/#{checkpoint} && sudo rm -rf /tmp/captain/nfs/checkpoints/#{id}") if @nfs
 		return command_send("sudo docker checkpoint create --checkpoint-dir=/tmp/captain/checkpoints/export #{id} #{checkpoint}")
 	end
 	def docker_checkpoint_restore(id, checkpoint)
-		return command_send("sudo docker start --checkpoint-dir=/tmp/captain/nfs/checkpoints --checkpoint=#{checkpoint} #{id}") if @nfs
-		return command_send("sudo docker start --checkpoint-dir=/tmp/captain/checkpoints/import --checkpoint=#{checkpoint} #{id}")
+		return command_send("sudo docker start --checkpoint-dir=/tmp/captain/nfs/checkpoints --checkpoint=#{checkpoint} #{id} && sudo rm -rf /tmp/captain/nfs/checkpoints/#{checkpoint}") if @nfs
+		return command_send("sudo docker start --checkpoint-dir=/tmp/captain/checkpoints/import --checkpoint=#{checkpoint} #{id} && sudo rm -rf /tmp/captain/checkpoints/import/#{checkpoint}")
 	end
 
 	# Get container ID by name
@@ -239,35 +245,38 @@ module CaptainBase
 		return _ssh.strip
 	end
 	def command_send_remote(ip_remote, command)
-		# Execute command on target to remote
+		# Prepare command
 		command = command.gsub('"', '\\"')
+		command = command.gsub('$', '\\$')
+
+		# Execute command on target to remote
 		return command_send("ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -t #{ip_remote} \"#{command}\" 2>/dev/null")
 	end
 
 	# Sends file to VM using predefined credientals
 	def file_send(file_local, file_target, compressed=false)
 		raise "Target machine is not accessible" if (!@config["ssh"] or !@ip)
-		raise "Local file (#{source}) is not accessible" if (!(file_local[-1].eql? "/") && !(file_local[-2,2].eql? "/*") && !File.exist?(file_local))
+		raise "Local file (#{source}) is not accessible" if (!(file_local[-1].eql? "/") && !(file_local[-2,2].eql? "/*") && !File.exist?(File.expand_path(file_local)))
 
 		# Prepare
-		file_local = file_local.gsub(/\/\*$/, '')
+		file_local = File.expand_path(file_local.gsub(/\/\*$/, ''))
 		file_target = file_target.gsub(/\/$/, '')
 
 		# Send
-		if (compressed)
+		if (compressed && !(['.tar.gz','.gz','.zip'].include? File.extname(file_local)))
 			# Compress, send, uncompress
 			case compressed
 				when "tar"
 					# TAR
 					_tarname = Time.now.to_i
 					puts "[INFO] Sending #{file_local} using TAR archive" if $debug
-					`rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname "#{file_local}") && tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename "#{file_local}") && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} /tmp/captain/transfers/#{_tarname}.tar.gz #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_tarname}.tar.gz 2>/dev/null && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz`
+					`rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname "#{file_local}") && sudo tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename "#{file_local}") && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} /tmp/captain/transfers/#{_tarname}.tar.gz #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_tarname}.tar.gz 2>/dev/null && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz`
 					_scp = command_send("tar -xzf /tmp/captain/transfers/#{_tarname}.tar.gz -C $(dirname \"#{file_target}\") && mv \"$(dirname \"#{file_target}\")/$(basename \"#{file_local}\")\" \"#{file_target}\" && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz")
 				when "zip"
 					# ZIP
 					_zipname = Time.now.to_i
 					puts "[INFO] Sending #{file_local} using ZIP archive" if $debug
-					`rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname "#{file_local}") && zip -rq /tmp/captain/transfers/#{_zipname}.zip $(basename "#{file_local}") && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} /tmp/captain/transfers/#{_zipname}.zip #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_zipname}.zip 2>/dev/null && rm -f /tmp/captain/transfers/#{_zipname}.zip`
+					`rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname "#{file_local}") && sudo zip -rq /tmp/captain/transfers/#{_zipname}.zip $(basename "#{file_local}") && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} /tmp/captain/transfers/#{_zipname}.zip #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_zipname}.zip 2>/dev/null && rm -f /tmp/captain/transfers/#{_zipname}.zip`
 					_scp = command_send("unzip /tmp/captain/transfers/#{_zipname}.zip -d $(dirname \"#{file_target}\") && mv \"$(dirname \"#{file_target}\")/$(basename \"#{file_local}\")\" \"#{file_target}\" && rm -f /tmp/captain/transfers/#{_zipname}.zip")
 				else
 					raise "Unsupported archiving type "+compressed
@@ -285,21 +294,21 @@ module CaptainBase
 		file_remote = file_remote.gsub(/\/$/, '')
 
 		# Send from from target to remote
-		if (compressed)
+		if (compressed && !(['.tar.gz','.gz','.zip'].include? File.extname(file_target)))
 			# Compress, send, uncompress
 			case compressed
 				when "tar"
 					# TAR
 					_tarname = Time.now.to_i
 					puts "[INFO] Transferring #{file_target} to #{ip_remote} using TAR archive" if $debug
-					command_send("rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname \"#{file_target}\") && tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename \"#{file_target}\") && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 /tmp/captain/transfers/#{_tarname}.tar.gz #{ip_remote}:/tmp/captain/transfers/#{_tarname}.tar.gz 2>/dev/null && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz")
-					command_send_remote(ip_remote, "tar -xzf /tmp/captain/transfers/#{_tarname}.tar.gz -C $(dirname \"#{file_remote}\") && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz")
+					command_send("rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname \"#{file_target}\") && sudo tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename \"#{file_target}\") && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 /tmp/captain/transfers/#{_tarname}.tar.gz #{ip_remote}:/tmp/captain/transfers/#{_tarname}.tar.gz 2>/dev/null && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz")
+					command_send_remote(ip_remote, "tar -xzf /tmp/captain/transfers/#{_tarname}.tar.gz -C $(dirname \"#{file_remote}\") && mv \"$(dirname \"#{file_remote}\")/$(basename \"#{file_target}\")\" \"#{file_remote}\" && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz")
 				when "zip"
 					# ZIP
 					_zipname = Time.now.to_i
 					puts "[INFO] Transferring #{file_target} to #{ip_remote} using ZIP archive" if $debug
-					command_send("rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname \"#{file_target}\") && zip -rq /tmp/captain/transfers/#{_zipname}.zip $(basename \"#{file_target}\") && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 /tmp/captain/transfers/#{_zipname}.zip #{ip_remote}:/tmp/captain/transfers/#{_zipname}.zip 2>/dev/null && rm -f /tmp/captain/transfers/#{_zipname}.zip")
-					command_send_remote(ip_remote, "unzip /tmp/captain/transfers/#{_zipname}.zip -d $(dirname \"#{file_remote}\") && rm -f /tmp/captain/transfers/#{_zipname}.zip")
+					command_send("rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname \"#{file_target}\") && sudo zip -rq /tmp/captain/transfers/#{_zipname}.zip $(basename \"#{file_target}\") && scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 /tmp/captain/transfers/#{_zipname}.zip #{ip_remote}:/tmp/captain/transfers/#{_zipname}.zip 2>/dev/null && rm -f /tmp/captain/transfers/#{_zipname}.zip")
+					command_send_remote(ip_remote, "unzip /tmp/captain/transfers/#{_zipname}.zip -d $(dirname \"#{file_remote}\") && mv \"$(dirname \"#{file_remote}\")/$(basename \"#{file_target}\")\" \"#{file_remote}\" && rm -f /tmp/captain/transfers/#{_zipname}.zip")
 				else
 					raise "Unsupported archiving type "+compressed
 			end
@@ -326,23 +335,23 @@ module CaptainBase
 
 		# Prepare
 		file_target = file_target.gsub(/\/\*$/, '')
-		file_local = file_local.gsub(/\/$/, '')
+		file_local = File.expand_path(file_local.gsub(/\/$/, ''))
 
 		# Retrieve
-		if (compressed)
+		if (compressed && !(['.tar.gz','.gz','.zip'].include? File.extname(file_target)))
 			# Compress, retrieve, uncompress
 			case compressed
 				when "tar"
 					# TAR
 					_tarname = Time.now.to_i
 					puts "[INFO] Retrieving #{file_target} using TAR archive" if $debug
-					command_send("rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname \"#{file_target}\") && tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename \"#{file_target}\")")
+					command_send("rm -f /tmp/captain/transfers/#{_tarname}.tar.gz && cd $(dirname \"#{file_target}\") && sudo tar -czf /tmp/captain/transfers/#{_tarname}.tar.gz $(basename \"#{file_target}\")")
 					_scp = `scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_tarname}.tar.gz /tmp/captain/transfers/#{_tarname}.tar.gz 2>/dev/null && tar -xzf /tmp/captain/transfers/#{_tarname}.tar.gz -C $(dirname "#{file_local}") && mv \"$(dirname \"#{file_local}\")/$(basename \"#{file_target}\")\" \"#{file_local}\" && rm -f /tmp/captain/transfers/#{_tarname}.tar.gz`
 				when "zip"
 					# ZIP
 					_zipname = Time.now.to_i
 					puts "[INFO] Retrieving #{file_target} using ZIP archive" if $debug
-					command_send("rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname \"#{file_target}\") && tar -czf /tmp/captain/transfers/#{_zipname}.zip $(basename \"#{file_target}\")")
+					command_send("rm -f /tmp/captain/transfers/#{_zipname}.zip && cd $(dirname \"#{file_target}\") && sudo zip -rq /tmp/captain/transfers/#{_zipname}.zip $(basename \"#{file_target}\")")
 					_scp = `scp -rq -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} #{@config["ssh"]["username"]}@#{@ip}:/tmp/captain/transfers/#{_zipname}.zip /tmp/captain/transfers/#{_zipname}.zip 2>/dev/null && unzip /tmp/captain/transfers/#{_zipname}.zip -d $(dirname "#{file_local}") && mv \"$(dirname \"#{file_local}\")/$(basename \"#{file_target}\")\" \"#{file_local}\" && /tmp/captain/transfers/#{_zipname}.zip`
 				else
 					raise "Unsupported archiving type "+compressed

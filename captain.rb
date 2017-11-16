@@ -229,8 +229,11 @@ class Captain
 
 		# Finish
 		if _time && (_time.has_key? "total")
-			puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
-			puts "[OK] Container migrated (to DESTINATION) in total #{_time['total']} seconds"
+			if ($verbose && _time["copy"]>0)
+				puts "[INFO] Copy: #{_time['copy'].round(4)} seconds"
+				puts "[INFO] C/R: #{(_time['total']-_time['copy']).round(4)} seconds"
+			end
+			puts "[OK] Container migrated (to DESTINATION) in total #{_time['total'].round(4)} seconds"
 		else
 			puts "[ERROR] Container cannot be migrated (to DESTINATION)"
 		end
@@ -248,8 +251,11 @@ class Captain
 
 		# Finish
 		if _time && (_time.has_key? "total")
-			puts "[INFO] Copy: #{_time['copy']} seconds" if ($verbose && _time["copy"]>0)
-			puts "[OK] Container migrated (to SOURCE) in total #{_time['total']} seconds"
+			if ($verbose && _time["copy"]>0)
+				puts "[INFO] Copy: #{_time['copy'].round(4)} seconds"
+				puts "[INFO] C/R: #{(_time['total']-_time['copy']).round(4)} seconds"
+			end
+			puts "[OK] Container migrated (to SOURCE) in total #{_time['total'].round(4)} seconds"
 		else
 			puts "[ERROR] Container cannot be migrated (to SOURCE)"
 		end
@@ -397,7 +403,7 @@ class Captain
 		# Copy
 		if @capabilities["directssh"]["source"]
 			# Send file directly from source to destination
-			@source.file_send_remote(@destination.get_ip, file_source, file_destination, _archiving)
+			@source.file_send_remote(@ips["destination"], file_source, file_destination, _archiving)
 		else
 			# Retrieve file and then send to destination
 			begin
@@ -430,7 +436,7 @@ class Captain
 		# Copy
 		if @capabilities["directssh"]["destination"]
 			# Send file directly from source to destination
-			@destination.file_send_remote(@source.get_ip, file_destination, file_source, _archiving)
+			@destination.file_send_remote(@ips["source"], file_destination, file_source, _archiving)
 		else
 			# Retrieve file and then send to source
 			begin
@@ -462,6 +468,16 @@ class Captain
 	def _setup_finish
 		puts "Finishing setup..."
 
+		# Get instance IPs
+		if @config["source"]["type"]=="aws" && @config["destination"]["type"]=="aws"
+			@ips = { "source" => @source.get_ip_private, "destination" => @destination.get_ip_private }
+		else
+			@ips = { "source" => @source.get_ip, "destination" => @destination.get_ip }
+		end
+
+		# Check instances
+		raise "SOURCE and DESTINATION seems to be the same" if @ips["source"]==@ips["destination"]
+
 		# Finish node setups
 		@source.setup_finish
 		@destination.setup_finish
@@ -469,16 +485,41 @@ class Captain
 		# Check capabilities first
 		_check_capabilites
 
+		# Inject key if no direct SSH capability is present
+		if @config["ssh"] && @config["ssh"]["key_inject"] && !(@capabilities["directssh"]["source"] && @capabilities["directssh"]["destination"])
+			puts "[INFO] Injecting SSH keys in SOURCE and DESTINATION nodes" if $verbose
+
+			# To source
+			if !@capabilities["directssh"]["source"] && (File.exist?(File.expand_path(@config["destination"]["ssh"]["key"]+".pub")))
+				p "IN"
+				@source.file_send(@config["destination"]["ssh"]["key"], "/tmp/id_rsa")
+				@source.file_send(@config["destination"]["ssh"]["key"]+".pub", "/tmp/id_rsa.pub")
+				@source.command_send("mkdir -p ~/.ssh && chmod 0700 ~/.ssh && mv /tmp/id_rsa* ~/.ssh/ && chmod 0600 ~/.ssh/id_rsa && chmod 0644 ~/.ssh/id_rsa.pub && cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && chmod 0600 ~/.ssh/authorized_keys")
+			end
+
+			# To destinsation
+			if !@capabilities["directssh"]["destination"] && (File.exist?(File.expand_path(@config["source"]["ssh"]["key"]+".pub")))
+				p "IN"
+				@destination.file_send(@config["source"]["ssh"]["key"], "/tmp/id_rsa")
+				@destination.file_send(@config["source"]["ssh"]["key"]+".pub", "/tmp/id_rsa.pub")
+				@destination.command_send("mkdir -p ~/.ssh && chmod 0700 ~/.ssh && mv /tmp/id_rsa* ~/.ssh/ && chmod 0600 ~/.ssh/id_rsa && chmod 0644 ~/.ssh/id_rsa.pub && cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && chmod 0600 ~/.ssh/authorized_keys")
+			end
+
+			# Recheck capabilities
+			_capability_directssh
+		end
+
 		# Setup NFS
 		@nfs = false
-		if (@config["nfs"] && @config["nfs"]["enabled"])
+		if (@config["nfs"] && @config["nfs"]["enabled"] && @config["source"]["type"]==@config["destination"]["type"])
+			puts "[INFO] Setting up NFS shares" if $verbose
 			if @capabilities["nfs"]["source"]
 				# Source to destination
-				@nfs = @source.setup_nfs_server(@destination.get_ip) && @destination.setup_nfs_client(@source.get_ip)
+				@nfs = @source.setup_nfs_server(@ips["destination"]) && @destination.setup_nfs_client(@ips["source"])
 				puts "[INFO] NFS: source (server) >> destination" if $verbose
 			elsif @capabilities["nfs"]["destination"]
 				# Destination to source
-				@nfs = @destination.setup_nfs_server(@source.get_ip) && @source.setup_nfs_client(@destination.get_ip)
+				@nfs = @destination.setup_nfs_server(@ips["source"]) && @source.setup_nfs_client(@ips["destination"])
 				puts "[INFO] NFS: destination (server) >> source" if $verbose
 			end
 			if @nfs
@@ -518,11 +559,11 @@ class Captain
 		@capabilities["directssh"] = {}
 
 		# Source -> Destination
-		_response = @source.command_send_remote(@destination.get_ip, "echo 'ok'")
+		_response = @source.command_send_remote(@ips["destination"], "echo 'ok'")
 		@capabilities["directssh"]["source"] = (_response.eql? "ok")
 
 		# Destination -> Source
-		_response = @destination.command_send_remote(@source.get_ip, "echo 'ok'")
+		_response = @destination.command_send_remote(@ips["source"], "echo 'ok'")
 		@capabilities["directssh"]["destination"] = (_response.eql? "ok")
 
 		return (@capabilities["directssh"]["source"] && @capabilities["directssh"]["destination"])
@@ -596,6 +637,7 @@ class Captain
 			_time["copy"] = _finish["copy"] - _start["copy"]
 		end
 		_response = @destination.docker_checkpoint_restore(id_destination, _checkpoint)
+		p _response if $debug && _response.length>0
 		_finish["total"] = Time.now
 		_time["total"] = _finish["total"] - _start["total"]
 
@@ -626,6 +668,7 @@ class Captain
 			_time["copy"] = _finish["copy"] - _start["copy"]
 		end
 		_response = @source.docker_checkpoint_restore(id_source, _checkpoint)
+		p _response if $debug && _response.length>0
 		_finish["total"] = Time.now
 		_time["total"] = _finish["total"] - _start["total"]
 

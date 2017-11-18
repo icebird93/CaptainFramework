@@ -61,10 +61,10 @@ class Captain
 	end
 
 	# Control source setup steps
-	def destination_setup_step_add(step)
+	def source_setup_step_add(step)
 		@config["source"]["setup"][step] = true
 	end
-	def destination_setup_step_remove(step)
+	def source_setup_step_remove(step)
 		@config["source"]["setup"][step] = false
 	end
 
@@ -364,11 +364,6 @@ class Captain
 
 		# Finish
 		return { "to" => { "min" => _min_to.round(4), "avg" => _avg_to.round(4), "max" => _max_to.round(4) }, "back" => { "min" => _min_back.round(4), "avg" => _avg_back.round(4), "max" => _max_back.round(4) }, "summary" => { "min" => _min.round(4), "avg" => _avg.round(4), "max" => _max.round(4) } }
-	end
-
-	# Detailed statistics logging
-	def _log_stats(line)
-		open($location+"/logs/stats.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+"] "+line+"\n") } if (line.is_a?(String) && !line.empty?)
 	end
 
 	###################
@@ -681,6 +676,11 @@ class Captain
 	def _command(command)
 		_ssh = `#{command}`
 		return _ssh.strip
+	end
+
+	# Detailed statistics logging
+	def _log_stats(line)
+		open($location+"/logs/stats.log", 'a') { |f| f.puts("["+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+"] "+line+"\n") } if (line.is_a?(String) && !line.empty?)
 	end
 
 	# Log a custom text

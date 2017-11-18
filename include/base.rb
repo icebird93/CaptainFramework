@@ -369,27 +369,22 @@ module CaptainBase
 	####################
 
 	# Creates and checks VM
-	def machine_create
+	def setup_create
 		raise NotImplementedError, "machine_create is not implemented"
 	end
 
 	# Starts VM
-	def machine_instance
+	def setup_instance
 		raise NotImplementedError, "machine_instance is not implemented"
 	end
 
-	# Prepares environment
-	def machine_environment
-		raise NotImplementedError, "machine_environment is not implemented"
-	end
-
 	# Does tests
-	def machine_test
+	def seutp_test
 		raise NotImplementedError, "machine_test is not implemented"
 	end
 
 	# Destroys VM
-	def machine_destroy
+	def setup_destroy
 		raise NotImplementedError, "machine_destroy is not implemented"
 	end
 
@@ -535,7 +530,7 @@ module CaptainBase
 		puts _debug if $debug
 
 		# Wait until it reboots
-		puts "[INFO] Waiting to reboot" if $verbose
+		puts "[INFO] Waiting for instance" if $verbose
 		_retries = 10
 		sleep(10)
 		until (_retries == 0) || (_instance_status(@instance).eql? "running" && _connection_status) do

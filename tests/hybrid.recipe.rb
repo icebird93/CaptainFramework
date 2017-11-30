@@ -9,7 +9,7 @@ captain = Captain.new({verbose:true, debug:true, confirm:true})
 # Load configuration
 captain.load_configuration(File.expand_path('..', File.dirname(__FILE__))+'/tests/hybrid.config.yml')
 
-# Setup target machine
+# Setup source machine
 captain.source_setup
 
 # Setup target machine

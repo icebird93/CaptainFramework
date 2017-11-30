@@ -379,7 +379,7 @@ module CaptainBase
 	end
 
 	# Does tests
-	def seutp_test
+	def setup_test
 		raise NotImplementedError, "machine_test is not implemented"
 	end
 

@@ -29,7 +29,7 @@ captain.destination_setup
 #captain.migrate_destination_to_source(captain.destination_docker_id("memapp"), captain.source_docker_id("memapp"))
 
 # Do migration tests
-captain.stats_migration({"iterations" => 50, "log" => "/tmp/stats.local.csv"}, {"type" => "image", "name" => "memapp", "image" => "lm-tcpapp", "options" => '-e STRESS="--vm-bytes 1000M –vm-hang 0 -m 1 -c 1'})
+captain.stats_migration({"iterations" => 50, "log" => "/tmp/stats.local.csv"}, {"type" => "command", "name" => "looper", "command" => "/bin/sh -c 'i=0; while true; do echo $i; i=$(expr $i + 1); sleep 1; done'"})
 
 # Finish
 captain.finish

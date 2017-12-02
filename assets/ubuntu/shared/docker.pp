@@ -27,6 +27,6 @@ class captain::ubuntu_docker($ubuntu_release) {
 
 	# Enable experimental
 	exec { 'docker_experimental':
-		command => '/bin/bash -c "[ \"$(grep -E \'^ExecStart=.*?--experimental=true\' docker.service | wc -l)\" -eq 1 ] || (sed -i \'s/^ExecStart=.*$/& --experimental=true/i\' /etc/systemd/system/multi-user.target.wants/docker.service && echo \'{\"experimental\":true,\"storage-driver\":\"aufs\"}\' > /etc/docker/daemon.json && systemctl daemon-reload && service docker restart)"'
+		command => '/bin/bash -c "[ \"$(docker version -f \"{{.Server.Experimental}}\" | xargs)\" == \"true\" ] || (echo \'{\"experimental\":true,\"storage-driver\":\"aufs\"}\' > /etc/docker/daemon.json && service docker restart)"'
 	}
 }

@@ -486,22 +486,20 @@ class Captain
 
 			# To source
 			if !@capabilities["directssh"]["source"] && (File.exist?(File.expand_path(@config["destination"]["ssh"]["key"]+".pub")))
-				p "IN"
 				@source.file_send(@config["destination"]["ssh"]["key"], "/tmp/id_rsa")
 				@source.file_send(@config["destination"]["ssh"]["key"]+".pub", "/tmp/id_rsa.pub")
-				@source.command_send("mkdir -p ~/.ssh && chmod 0700 ~/.ssh && mv /tmp/id_rsa* ~/.ssh/ && chmod 0600 ~/.ssh/id_rsa && chmod 0644 ~/.ssh/id_rsa.pub && cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && chmod 0600 ~/.ssh/authorized_keys")
+				@source.command_send("mkdir -p ~/.ssh && chmod 0700 ~/.ssh && mv /tmp/id_rsa* ~/.ssh/ && chmod 0600 ~/.ssh/id_rsa && chmod 0644 ~/.ssh/id_rsa.pub && cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && chmod 0600 ~/.ssh/authorized_keys && touch ~/.ssh/config && chmod 0600 ~/.ssh/config && echo \"Host #{@ips["destination"]}\n  User #{@config["destination"]["ssh"]["username"]}\n  PreferredAuthentications publickey\n  IdentityFile ~/.ssh/id_rsa\n\" >> ~/.ssh/config")
 			end
 
 			# To destinsation
 			if !@capabilities["directssh"]["destination"] && (File.exist?(File.expand_path(@config["source"]["ssh"]["key"]+".pub")))
-				p "IN"
 				@destination.file_send(@config["source"]["ssh"]["key"], "/tmp/id_rsa")
 				@destination.file_send(@config["source"]["ssh"]["key"]+".pub", "/tmp/id_rsa.pub")
-				@destination.command_send("mkdir -p ~/.ssh && chmod 0700 ~/.ssh && mv /tmp/id_rsa* ~/.ssh/ && chmod 0600 ~/.ssh/id_rsa && chmod 0644 ~/.ssh/id_rsa.pub && cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && chmod 0600 ~/.ssh/authorized_keys")
+				@destination.command_send("mkdir -p ~/.ssh && chmod 0700 ~/.ssh && mv /tmp/id_rsa* ~/.ssh/ && chmod 0600 ~/.ssh/id_rsa && chmod 0644 ~/.ssh/id_rsa.pub && cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && chmod 0600 ~/.ssh/authorized_keys && touch ~/.ssh/config && chmod 0600 ~/.ssh/config && echo \"Host #{@ips["source"]}\n  User #{@config["source"]["ssh"]["username"]}\n  PreferredAuthentications publickey\n  IdentityFile ~/.ssh/id_rsa\n\" >> ~/.ssh/config")
 			end
 
 			# Recheck capabilities
-			_capability_directssh
+			puts "[WARN] Key injection failed" if !_capability_directssh && $verbose
 		end
 
 		# Setup NFS

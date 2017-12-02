@@ -476,6 +476,8 @@ module CaptainBase
 		raise "Docker not installed or not running" if (!_docker || (_docker.eql? ""))
 		puts "Docker: #{_docker}"
 		_experimental = command_send("sudo docker version -f \"{{.Server.Experimental}}\"")
+		_storage = command_send("sudo docker info 2>/dev/null | grep 'Storage Driver' | awk '{$1=$2=\"\";print}' | xargs")
+		puts "[WARN] Docker is not using AUFS as storage engine, errors may occur" if $verbose && !(_storage.eql? "aufs")
 		raise "Docker experimental mode should be enabled" if (!_experimental || !(_experimental.eql? "true"))
 		return true
 	end

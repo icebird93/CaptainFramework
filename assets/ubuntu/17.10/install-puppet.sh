@@ -17,7 +17,7 @@ apt install -y puppet
 
 # Enable /etc/rc.local feature
 wget https://s3.eu-central-1.amazonaws.com/captain-framework/other/ubuntu/17.10/rc-local.service -O /etc/systemd/system/rc-local.service
-touch /etc/rc.local
+[ -f /etc/rc.local ] || wget https://s3.eu-central-1.amazonaws.com/captain-framework/other/ubuntu/17.10/rc.local -O /etc/rc.local
 chmod +x /etc/rc.local
 systemctl enable rc-local.service
 

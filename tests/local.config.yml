@@ -1,60 +1,60 @@
 # Global settings
 nfs:
-  enabled: true                    # NFS shares
+  enabled: true                     # NFS shares
 archiving:
-  tar: false                       # TAR transfer
-  zip: false                       # ZIP transfer
+  tar: false                        # TAR transfer
+  zip: false                        # ZIP transfer
 
 # Source machine
 source:
-  os: "ubuntu"                     # OS
-  version: "16.04"                 # OS version (optional)
-  type: "generic"                  # Type of source server
+  os: "ubuntu"                      # OS
+  version: "16.04"                  # OS version (optional)
+  type: "generic"                   # Type of source server
 
   # How to setup machine
   setup:
-    test: true                     # Do tests
+    test: true                      # Do tests
   finish:
-    destroy: false                 # Destroy instance automatically
+    destroy: false                  # Destroy instance automatically
 
   # Generic target
   generic:
-    ip: "10.0.4.10"                # Instance IPv4 address
+    ip: "10.0.4.10"                 # Instance IPv4 address
 
   # SSH details
   ssh:
-    username: "root"               # Username (false = automatic)
-    key: "~/.ssh/captain/id_rsa"   # Keyfile used to SSH
+    username: "root"                # Username (false = automatic)
+    key: "~/.ssh/captain/id_rsa"    # Keyfile used to SSH
 
   # Tuning
   ramdisk:
-    enabled: true                  # Use RAM as temporary storage for migration
-    size: 512                      # Size in MB
+    enabled: true                   # Use RAM as temporary storage for migration
+    size: 512                       # Size in MB
 
 # Destination machine
 destination:
-  os: "ubuntu"                     # OS
-  version: "16.04"                 # OS version (optional)
-  type: "generic"                  # Type of destination server
+  os: "ubuntu"                      # OS
+  version: "16.04"                  # OS version (optional)
+  type: "generic"                   # Type of destination server
 
   # How to setup machine
   setup:
-    create: false                  # Create instance automatically
-    environment: false				     # Prepare installer environment (via Puppet)
-    test: true                     # Do tests
+    create: false                   # Create instance automatically
+    environment: false				      # Prepare installer environment (via Puppet)
+    test: true                      # Do tests
   finish:
-    destroy: false                 # Destroy instance automatically
+    destroy: false                  # Destroy instance automatically
 
   # Generic target
   generic:
-    ip: "10.0.4.20"                # Instance IPv4 address
+    ip: "10.0.4.20"                 # Instance IPv4 address
 
   # SSH details
   ssh:
-    username: "root"               # Username (false = automatic)
-    key: "~/.ssh/captain/id_rsa"   # Keyfile used to SSH
+    username: "root"                # Username (false = automatic)
+    key: "~/.ssh/captain/id_rsa"    # Keyfile used to SSH
 
   # Tuning
   ramdisk:
-    enabled: true                  # Use RAM as temporary storage for migration
-    size: 512                      # Size in MB    
+    enabled: true                   # Use RAM as temporary storage for migration
+    size: 512                       # Size in MB

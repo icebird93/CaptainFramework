@@ -420,6 +420,7 @@ module CaptainBase
 	def _capability_environment
 		_check_hostname
 		_check_kernel
+		@capabilities["cpu"] = _check_cpu
 		@capabilities["nfs"] = {}
 		@capabilities["nfs"]["server"] = _check_nfs_server
 		@capabilities["nfs"]["client"] = _check_nfs_client
@@ -445,6 +446,14 @@ module CaptainBase
 	def _check_kernel
 		_kernel = command_send("uname -r")
 		puts "Kernel: #{_kernel}"
+	end
+	def _check_cpu
+		_processor = command_send("cat /proc/cpuinfo | grep 'model name' | head -n 1 | awk '{$1=$2=$3=\"\";print}' | xargs")
+		_vendor = command_send("cat /proc/cpuinfo | grep 'vendor_id' | head -n 1 | awk '{print $3}'")
+		_family = command_send("cat /proc/cpuinfo | grep 'cpu family' | head -n 1 | awk '{print $4}'")
+		_model = command_send("cat /proc/cpuinfo | grep -E 'model\\s{2,}' | head -n 1 | awk '{print $3}'")
+		puts "Processor: #{_processor}"
+		return { "processor" => _processor, "vendor" => _vendor, "family" => _family, "model" => _model }
 	end
 	def _check_archiving
 		_tar = command_send("which tar | wc -l")

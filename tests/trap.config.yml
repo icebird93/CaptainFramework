@@ -1,0 +1,58 @@
+# Global settings
+nfs:
+  enabled: false                    # NFS shares
+archiving:
+  tar: false                        # TAR transfer
+  zip: false                        # ZIP transfer
+
+# Source machine
+source:
+  os: "ubuntu"                      # OS
+  version: "16.04"                  # OS version (optional)
+  type: "generic"                   # Type of source server
+
+  # How to setup machine
+  setup:
+    test: true                      # Do tests
+  finish:
+    destroy: false                  # Destroy instance automatically
+
+  # Generic target
+  generic:
+    ip: "10.0.4.10"                 # Instance IPv4 address
+
+  # SSH details
+  ssh:
+    username: "root"                # Username (false = automatic)
+    key: "~/.ssh/captain/id_rsa"    # Keyfile used to SSH
+
+  # Tuning
+  ramdisk:
+    enabled: false                  # Use RAM as temporary storage for migration
+
+# Destination machine
+destination:
+  os: "ubuntu"                      # OS
+  version: "17.10"                  # OS version (optional)
+  type: "generic"                   # Type of destination server
+
+  # How to setup machine
+  setup:
+    create: false                   # Create instance automatically
+    environment: false              # Prepare installer environment (via Puppet)
+    test: false                     # Do tests
+  finish:
+    destroy: false                  # Destroy instance automatically
+
+  # Generic target
+  generic:
+    ip: "159.89.9.194"              # Instance IPv4 address
+
+  # SSH details
+  ssh:
+    username: "root"                # Username (false = automatic)
+    key: "~/.ssh/captain/id_rsa"    # Keyfile used to SSH
+
+  # Tuning
+  ramdisk:
+    enabled: false                  # Use RAM as temporary storage for migration

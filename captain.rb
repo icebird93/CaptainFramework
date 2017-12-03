@@ -539,11 +539,28 @@ class Captain
 
 	# Check capabilities between source and destination
 	def _check_capabilites
+		_capability_migration
 		_capability_directssh
 		_capability_archiving
 		_capability_nfs
 
 		p @capabilities if $debug
+	end
+
+	# Check migration capability (it mifht fail with different processors types)
+	def _capability_migration
+		# Get capabilites
+		_capabilities_source = @source.get_capabilities
+		_capabilities_destination = @destination.get_capabilities
+
+		# Check vendors, families and types
+		if !(_capabilities_source["cpu"]["vendor"].eql? _capabilities_destination["cpu"]["vendor"]) || (_capabilities_source["cpu"]["family"]!=_capabilities_destination["cpu"]["family"]) || (_capabilities_source["cpu"]["model"]!=_capabilities_destination["cpu"]["model"])
+			# Different!
+			puts "######"
+			puts "[WARN] SOURCE and DESTINATION have different types of processors, thus migration might fail"
+			puts "######"
+			sleep(3)
+		end
 	end
 
 	# Check direct SSH capability

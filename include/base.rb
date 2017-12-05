@@ -244,6 +244,11 @@ module CaptainBase
 		_ssh = `ssh -oStrictHostKeyChecking=no -oConnectTimeout=8 -i #{@config["ssh"]["key"]} -t #{@config["ssh"]["username"]}@#{@ip} "#{command}" 2>/dev/null`
 		return _ssh.strip
 	end
+	def command_send_local(command)
+		# Execute and return result
+		_ssh = `#{command}`
+		return _ssh.strip
+	end
 	def command_send_remote(ip_remote, command)
 		# Prepare command
 		command = command.gsub('"', '\\"')
@@ -448,10 +453,18 @@ module CaptainBase
 		puts "Kernel: #{_kernel}"
 	end
 	def _check_cpu
-		_processor = command_send("cat /proc/cpuinfo | grep 'model name' | head -n 1 | awk '{$1=$2=$3=\"\";print}' | xargs")
-		_vendor = command_send("cat /proc/cpuinfo | grep 'vendor_id' | head -n 1 | awk '{print $3}'")
-		_family = command_send("cat /proc/cpuinfo | grep 'cpu family' | head -n 1 | awk '{print $4}'")
-		_model = command_send("cat /proc/cpuinfo | grep -E 'model\\s{2,}' | head -n 1 | awk '{print $3}'")
+		case @config["os"]
+			when "ubuntu"
+				_processor = command_send("cat /proc/cpuinfo | grep 'model name' | head -n 1 | awk '{$1=$2=$3=\"\";print}' | xargs")
+				_vendor = command_send("cat /proc/cpuinfo | grep 'vendor_id' | head -n 1 | awk '{print $3}'")
+				_family = command_send("cat /proc/cpuinfo | grep 'cpu family' | head -n 1 | awk '{print $4}'")
+				_model = command_send("cat /proc/cpuinfo | grep -E 'model\\s{2,}' | head -n 1 | awk '{print $3}'")
+			when "mac"
+				_processor = command_send("sysctl -n machdep.cpu.brand_string")
+				_vendor = command_send("sysctl -n machdep.cpu.vendor")
+				_family = command_send("sysctl -n machdep.cpu.family")
+				_model = command_send("sysctl -n machdep.cpu.model")
+		end
 		puts "Processor: #{_processor}"
 		return { "processor" => _processor, "vendor" => _vendor, "family" => _family, "model" => _model }
 	end
@@ -461,22 +474,43 @@ module CaptainBase
 		return { "tar" => (_tar.eql? "1"), "zip" => (_tar.eql? "2") }
 	end
 	def _check_tmpfs
-		_tmpfs = command_send("cat /proc/filesystems | grep -E '\Wtmpfs$' | wc -l")
+		case @config["os"]
+			when "ubuntu"
+				_tmpfs = command_send("cat /proc/filesystems | grep -E '\Wtmpfs$' | wc -l")
+			when "mac"
+				_tmpfs = "0"
+		end
 		return false if ((!_tmpfs) || (_tmpfs.eql? "0"))
 		return true
 	end
 	def _check_ram
-		_free = Integer(command_send("free -m | grep Mem: | awk '{print $4}'"))
-		_total = Integer(command_send("free -m | grep Mem: | awk '{print $2}'"))
+		case @config["os"]
+			when "ubuntu"
+				_free = Integer(command_send("free -m | grep Mem: | awk '{print $4}'"))
+				_total = Integer(command_send("free -m | grep Mem: | awk '{print $2}'"))
+			when "mac"
+				_free = Integer(command_send("vm_stat | perl -ne '/page size of (\\d+)/ and \$size=\$1; /Pages\\s+([^:]+)[^\\d]+(\\d+)/ and printf(\"%-16s % 16.0f Mi\\n\", \"\$1:\", \$2 * \$size / 1048576);' | grep free | awk '{print $2}'"))
+				_total = Integer(command_send("sysctl hw.memsize | awk '{print $2}'"))
+		end
 		return { "free" => _free, "total" => _total }
 	end
 	def _check_nfs_server
-		_nfs = command_send("dpkg -l | grep nfs-kernel-server | wc -l")
+		case @config["os"]
+			when "ubuntu"
+				_nfs = command_send("dpkg -l | grep nfs-kernel-server | wc -l")
+			when "mac"
+				_nfs = "0"
+		end
 		return false if ((!_nfs) || (_nfs.eql? "0"))
 		return true
 	end
 	def _check_nfs_client
-		_nfs = command_send("dpkg -l | grep nfs-common | wc -l")
+		case @config["os"]
+			when "ubuntu"
+				_nfs = command_send("dpkg -l | grep nfs-common | wc -l")
+			when "mac"
+				_nfs = "0"
+		end
 		return false if ((!_nfs) || (_nfs.eql? "0"))
 		return true
 	end

@@ -1,7 +1,3 @@
-require 'securerandom'
-require 'net/http'
-require 'uri'
-
 # Generic class extender
 class CaptainGeneric
 

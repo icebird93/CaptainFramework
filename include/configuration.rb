@@ -35,15 +35,15 @@ module CaptainConfiguration
 			end
 
 			# Create source instance
-			if @config["source"]
-				case @config["source"]["type"]
-					when "aws"
-						@source = CaptainAws.new(@config["source"])
-					when "generic"
-						@source = CaptainGeneric.new(@config["source"])
-					else
-						raise "Unsupported source type "+@config["source"]["type"]
-				end
+			case @config["source"]["type"]
+				when "aws"
+					@source = CaptainAws.new(@config["source"])
+				when "generic"
+					@source = CaptainGeneric.new(@config["source"])
+				when "local"
+					@source = CaptainLocal.new(@config["source"])
+				else
+					raise "Unsupported source type "+@config["source"]["type"]
 			end
 
 			# Create destination instance
@@ -52,11 +52,16 @@ module CaptainConfiguration
 					@destination = CaptainAws.new(@config["destination"])
 				when "generic"
 					@destination = CaptainGeneric.new(@config["destination"])
+				when "local"
+					@destination = CaptainLocal.new(@config["source"])
 				else
 					raise "Unsupported destination type "+@config["destination"]["type"]
 			end
 
 			# Prepare setup steps
+			if (!@config["source"]["setup"])
+				@config["source"]["setup"] = @setup
+			end
 			if (!@config["destination"]["setup"])
 				@config["destination"]["setup"] = @setup
 			end

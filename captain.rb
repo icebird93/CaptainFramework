@@ -9,6 +9,7 @@ require_relative 'include/configuration'
 require_relative 'include/base'
 
 # Type specific modules
+require_relative 'include/local'
 require_relative 'include/generic'
 require_relative 'include/aws'
 

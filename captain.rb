@@ -231,10 +231,11 @@ class Captain
 		# Finish
 		if _time && (_time.has_key? "total")
 			if ($verbose && _time["copy"]>0)
-				puts "[INFO] Copy: #{_time['copy'].round(4)} seconds"
-				puts "[INFO] C/R: #{(_time['total']-_time['copy']).round(4)} seconds"
+				puts "[INFO] Checkpoint: #{_time['checkpoint'].round(3)} seconds"
+				puts "[INFO] Copy: #{_time['copy'].round(3)} seconds"
+				puts "[INFO] Restore: #{_time['restore'].round(3)} seconds"
 			end
-			puts "[OK] Container migrated (to DESTINATION) in total #{_time['total'].round(4)} seconds"
+			puts "[OK] Container migrated (to DESTINATION) in total #{_time['total'].round(3)} seconds"
 		else
 			puts "[ERROR] Container cannot be migrated (to DESTINATION)"
 		end
@@ -253,10 +254,11 @@ class Captain
 		# Finish
 		if _time && (_time.has_key? "total")
 			if ($verbose && _time["copy"]>0)
-				puts "[INFO] Copy: #{_time['copy'].round(4)} seconds"
-				puts "[INFO] C/R: #{(_time['total']-_time['copy']).round(4)} seconds"
+				puts "[INFO] Checkpoint: #{_time['checkpoint'].round(3)} seconds"
+				puts "[INFO] Copy: #{_time['copy'].round(3)} seconds"
+				puts "[INFO] Restore: #{_time['restore'].round(3)} seconds"
 			end
-			puts "[OK] Container migrated (to SOURCE) in total #{_time['total'].round(4)} seconds"
+			puts "[OK] Container migrated (to SOURCE) in total #{_time['total'].round(3)} seconds"
 		else
 			puts "[ERROR] Container cannot be migrated (to SOURCE)"
 		end
@@ -286,6 +288,7 @@ class Captain
 		# Prepare
 		_iterations = config_stats["iterations"] || 3
 		_logfile = config_stats["log"] || $location+"/logs/stats.csv"
+		_sumfile = _logfile.gsub(/(\.csv)$/, '.summary\1')
 		_min_to = _min_back = false
 		_max_to = _max_back = false
 		_avg_to = _avg_back = 0
@@ -300,8 +303,9 @@ class Captain
 				destination_docker_create_image(config_migration["name"], config_migration["image"], config_migration["options"]||"")
 		end
 
-		# Reset results file
+		# Reset results file (with header)
 		File.truncate(_logfile, 0) if File.exist?(_logfile)
+		open(_logfile, 'a'){ |f| f.puts("iteration;datetime;s2d_checkpoint;s2d_copy;s2d_restore;s2d_total;d2s_checkpoint;d2s_copy;d2s_restore;d2s_total") }
 
 		# Do iterations
 		_skipped = _skipped_row = 0
@@ -340,10 +344,10 @@ class Captain
 			_avg_back += _time_back["total"] if i>0
 
 			# Log results
-			open(_logfile, 'a'){ |f| f.puts(i.to_s+";"+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+";"+_time_to["total"].round(4).to_s.chomp('.0')+";"+_time_back["total"].round(4).to_s.chomp('.0')+"\n") } if i>0
+			open(_logfile, 'a'){ |f| f.puts(i.to_s+";"+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+";"+_time_to["checkpoint"].round(4).to_s+";"+_time_to["copy"].round(4).to_s+";"+_time_to["restore"].round(4).to_s+";"+_time_to["total"].round(4).to_s+";"+_time_back["checkpoint"].round(4).to_s+";"+_time_back["copy"].round(4).to_s+";"+_time_back["restore"].round(4).to_s+";"+_time_back["total"].round(4).to_s+"\n") } if i>0
 
-			# Finish iteration
-			sleep(2)
+			# Finish iteration (sleep 1-4 seconds before next migration)
+			sleep(1+rand(0..3))
 		end
 
 		# Finalize statistics
@@ -361,6 +365,15 @@ class Captain
 			puts "SOURCE >> DESTINATION: #{_min_to.round(3)} / #{_avg_to.round(3)} / #{_max_to.round(3)}"
 			puts "DESTINATION >> SOURCE: #{_min_back.round(3)} / #{_avg_back.round(3)} / #{_max_back.round(3)}"
 			puts "Summarized: #{_min.round(3)} / #{_avg.round(3)} / #{_max.round(3)}"
+
+			# Save to file
+			File.truncate(_sumfile, 0) if File.exist?(_sumfile)
+			open(_sumfile, 'a') do |f|
+				f.puts("name;minimum;average;maximum")
+				f.puts("SOURCE to DESTINATION;#{_min_to.round(4)};#{_avg_to.round(4)};#{_max_to.round(4)}")
+				f.puts("DESTINATION to SOURCE;#{_min_back.round(4)};#{_avg_back.round(4)};#{_max_back.round(4)}")
+				f.puts("summarized;#{_min.round(4)};#{_avg.round(4)};#{_max.round(4)}")
+			end
 		end
 
 		# Finish
@@ -632,29 +645,28 @@ class Captain
 		# Prepare time measurement
 		_start = {}
 		_finish = {}
-		_time = {}
 
 		# Create checkpoint, transfer files and restore
-		_start["total"] = Time.now
+		_start["total"] = _start["checkpoint"] = Time.now
 		@source.docker_checkpoint_create(id_source, _checkpoint)
+		_finish["checkpoint"] = Time.now
 		if @nfs
 			# Use NFS shares
-			_time["copy"] = 0
+			_start["copy"] = _finish["copy"] = 0
 		else
 			# Transfer files
 			_start["copy"] = Time.now
 			copy_source_to_destination("/tmp/captain/checkpoints/export/#{id_source}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
 			_finish["copy"] = Time.now
-			_time["copy"] = _finish["copy"] - _start["copy"]
 		end
+		_start["restore"] = Time.now
 		_response = @destination.docker_checkpoint_restore(id_destination, _checkpoint)
 		p _response if $debug && _response.length>0
-		_finish["total"] = Time.now
-		_time["total"] = _finish["total"] - _start["total"]
+		_finish["restore"] = _finish["total"] = Time.now
 
 		# Finish
 		return false if (_response.include? "error") || (_response.include? "Error")
-		return _time
+		return { "checkpoint" => _finish["checkpoint"]-_start["checkpoint"], "copy" => _finish["copy"]-_start["copy"], "restore" => _finish["restore"]-_start["restore"], "total" => _finish["total"]-_start["total"] }
 	end
 	def _migrate_destination_to_source_docker(id_destination, id_source)
 		# Select "unique" checkpoint name
@@ -666,26 +678,26 @@ class Captain
 		_time = {}
 
 		# Create checkpoint, transfer files and restore
-		_start["total"] = Time.now
+		_start["total"] = _start["checkpoint"] = Time.now
 		@destination.docker_checkpoint_create(id_destination, _checkpoint)
+		_finish["checkpoint"] = Time.now
 		if @nfs
 			# Use NFS shares
-			_time["copy"] = 0
+			_start["copy"] = _finish["copy"] = 0
 		else
 			# Transfer files
 			_start["copy"] = Time.now
 			copy_destination_to_source("/tmp/captain/checkpoints/export/#{id_destination}/checkpoints/#{_checkpoint}", "/tmp/captain/checkpoints/import/#{_checkpoint}")
 			_finish["copy"] = Time.now
-			_time["copy"] = _finish["copy"] - _start["copy"]
 		end
+		_start["restore"] = Time.now
 		_response = @source.docker_checkpoint_restore(id_source, _checkpoint)
 		p _response if $debug && _response.length>0
-		_finish["total"] = Time.now
-		_time["total"] = _finish["total"] - _start["total"]
+		_finish["restore"] = _finish["total"] = Time.now
 
 		# Finish
 		return false if (_response.include? "error") || (_response.include? "Error")
-		return _time
+		return { "checkpoint" => _finish["checkpoint"]-_start["checkpoint"], "copy" => _finish["copy"]-_start["copy"], "restore" => _finish["restore"]-_start["restore"], "total" => _finish["total"]-_start["total"] }
 	end
 
 	# Run local command

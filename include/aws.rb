@@ -29,6 +29,9 @@ class CaptainAws
 		if (!@config["aws"]["instance"]) || @config["aws"]["instance"].length==0 || (_instance_terminated(@config["aws"]["instance"])) || (_instance_status(@config["aws"]["instance"]).eql? "")
 			# Instance not running or specified
 			puts "[INFO] Instance not running or specified" if $verbose
+			raise "No AMI specified" if !@config["aws"]["ami"]
+			raise "No AWS keypair specified" if !@config["aws"]["key"]
+			raise "No security group specified" if !@config["aws"]["security"]
 			puts "Creating instance..."
 			@instance = _instance_create(@config["aws"]["ami"], @config["aws"]["type"], @config["aws"]["key"], @config["aws"]["security"])
 			@setup["created"] = true
@@ -43,6 +46,9 @@ class CaptainAws
 	# Starts VM if needed
 	def setup_instance
 		if !@setup["instance"]
+			# Checks
+			raise "No AMI specified" if !@config["aws"]["ami"]
+
 			# Checking instance
 			@instance = @config["aws"]["instance"] if !@instance
 			@instance = _instance_id(@config["aws"]["ami"]) if (!@instance) or (@instance.length==0)
@@ -113,10 +119,6 @@ class CaptainAws
 
 		# Fix missing parameters
 		@config["aws"]["type"] = "t2.micro" if !@config["aws"]["type"]
-
-		# Check parameters
-		raise "No AMI specified" if !@config["aws"]["ami"]
-		raise "No AWS keypair specified" if !@config["aws"]["key"]
 	end
 
 	# Check if instance was terminated

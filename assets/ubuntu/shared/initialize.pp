@@ -18,6 +18,6 @@ class captain::ubuntu_initialize {
 		notify  => Exec['enable_dummy_sound']
 	}
 	exec { 'enable_dummy_sound':
-		command => '/bin/sed -i \'s/^exit 0$/modprobe snd-dummy enable=1 index=0 id="virtual"\nexit 0/\' /etc/rc.local'
+		command => '/bin/sed -i \'s/^exit 0$/modprobe snd-dummy enable=1 index=0 id="virtual"\nexit 0/\' /etc/rc.local && modprobe snd-dummy enable=1 index=0 id="virtual"'
 	}	
 }

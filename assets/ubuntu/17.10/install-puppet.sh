@@ -15,6 +15,9 @@ rm -f puppetlabs-release-pc1-xenial.deb
 apt update -y
 apt install -y puppet
 
+# Install linux-image-extra (for snd-dummy, aufs)
+apt install -y -o Dpkg::Options::="--force-confold" linux-image-extra-`uname -r`
+
 # Enable /etc/rc.local feature
 wget https://s3.eu-central-1.amazonaws.com/captain-framework/other/ubuntu/17.10/rc-local.service -O /etc/systemd/system/rc-local.service
 [ -f /etc/rc.local ] || wget https://s3.eu-central-1.amazonaws.com/captain-framework/other/ubuntu/17.10/rc.local -O /etc/rc.local

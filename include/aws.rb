@@ -33,9 +33,11 @@ class CaptainAws
 			raise "No AWS keypair specified" if !@config["aws"]["key"]
 			raise "No security group specified" if !@config["aws"]["security"]
 			puts "Creating instance..."
+			_start = Time.now
 			@instance = _instance_create(@config["aws"]["ami"], @config["aws"]["type"], @config["aws"]["key"], @config["aws"]["security"])
+			_finish = Time.now
 			@setup["created"] = true
-			puts "[OK] Created instance #{@instance}"
+			puts "[OK] Created instance #{@instance} in #{(_finish-_start).round(3)} seconds"
 		else
 			# Valid instance specified
 			@instance = @config["aws"]["instance"]
@@ -52,10 +54,10 @@ class CaptainAws
 			# Checking instance
 			@instance = @config["aws"]["instance"] if !@instance
 			@instance = _instance_id(@config["aws"]["ami"]) if (!@instance) or (@instance.length==0)
-			status = _instance_status(@instance)
+			_status = _instance_status(@instance)
 
 			# Start instance
-			if !(status.eql? "running")
+			if !(_status.eql? "running")
 				puts "Waiting for instance #{@instance}..."
 				_log("setup_instance")
 				raise "Instance cannot be started" if !_instance_start(@instance)
@@ -129,14 +131,14 @@ class CaptainAws
 
 	# Check instance status
 	def _instance_status(instance)
-		status = `aws ec2 describe-instance-status --instance-ids #{instance} --query "InstanceStatuses[0].InstanceState.Name" --output text 2>/dev/null`
-		return status.strip
+		_status = `aws ec2 describe-instance-status --instance-ids #{instance} --query "InstanceStatuses[0].InstanceState.Name" --output text 2>/dev/null`
+		return _status.strip
 	end
 
 	# Create instance in AWS
 	def _instance_create(ami, type, keypair, security_group)
-		instance = `aws ec2 run-instances --image-id ami-#{ami} --instance-type #{type} --key-name #{keypair} --security-group-ids #{security_group} --count 1 --query 'Instances[0].InstanceId' --output text 2>/dev/null`
-		return instance.strip
+		_instance = `aws ec2 run-instances --image-id ami-#{ami} --instance-type #{type} --key-name #{keypair} --security-group-ids #{security_group} --count 1 --query 'Instances[0].InstanceId' --output text 2>/dev/null`
+		return _instance.strip
 	end
 
 	# Start instance if not already started
@@ -146,13 +148,13 @@ class CaptainAws
 			`aws ec2 start-instances --instance-ids #{instance} 2>/dev/null`
 
 			# Wait until it boots (or 40 attempts)
-			retries = 40
-			until (retries == 0) || (_instance_status(instance).eql? "running") do
+			_retries = 40
+			until (_retries == 0) || (_instance_status(instance).eql? "running") do
 				puts "[INFO] Instance is not yet running, waiting..." if $verbose
-				sleep(10)
-				retries -= 1
+				sleep(5+rand(0..5))
+				_retries -= 1
 			end
-			return false if retries==0
+			return false if _retries==0
 		end
 		return true
 	end

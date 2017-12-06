@@ -66,6 +66,9 @@ module CaptainConfiguration
 				@config["destination"]["setup"] = @setup
 			end
 
+			# Defaults
+			@config["directssh"] = true unless @config.has_key? "directssh"
+
 			p @config if $debug
 			puts "[OK] Configuration loaded" if $verbose
 		rescue Exception => message

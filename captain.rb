@@ -336,15 +336,17 @@ class Captain
 			end
 
 			# Save stats
-			_min_to = _time_to["total"] if (i==0 || _time_to["total"]<_max_to)
-			_min_back = _time_back["total"] if (i==0 || _time_back["total"]<_max_back)
-			_max_to = _time_to["total"] if (i==0 || _time_to["total"]>_max_to)
-			_max_back = _time_back["total"] if (i==0 || _time_back["total"]>_max_back)
-			_avg_to += _time_to["total"] if i>0
-			_avg_back += _time_back["total"] if i>0
+			if i>0
+				_min_to = _time_to["total"] if (i==1 || _time_to["total"]<_min_to)
+				_min_back = _time_back["total"] if (i==1 || _time_back["total"]<_min_back)
+				_max_to = _time_to["total"] if (i==1 || _time_to["total"]>_max_to)
+				_max_back = _time_back["total"] if (i==1 || _time_back["total"]>_max_back)
+				_avg_to += _time_to["total"]
+				_avg_back += _time_back["total"]
 
-			# Log results
-			open(_logfile, 'a'){ |f| f.puts(i.to_s+";"+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+";"+_time_to["checkpoint"].round(4).to_s+";"+_time_to["copy"].round(4).to_s+";"+_time_to["restore"].round(4).to_s+";"+_time_to["total"].round(4).to_s+";"+_time_back["checkpoint"].round(4).to_s+";"+_time_back["copy"].round(4).to_s+";"+_time_back["restore"].round(4).to_s+";"+_time_back["total"].round(4).to_s+"\n") } if i>0
+				# Log results
+				open(_logfile, 'a'){ |f| f.puts(i.to_s+";"+DateTime.now.strftime('%Y-%m-%d %H:%M:%S')+";"+_time_to["checkpoint"].round(4).to_s+";"+_time_to["copy"].round(4).to_s+";"+_time_to["restore"].round(4).to_s+";"+_time_to["total"].round(4).to_s+";"+_time_back["checkpoint"].round(4).to_s+";"+_time_back["copy"].round(4).to_s+";"+_time_back["restore"].round(4).to_s+";"+_time_back["total"].round(4).to_s+"\n") }
+			end
 
 			# Finish iteration (sleep 1-4 seconds before next migration)
 			sleep(1+rand(0..3))
@@ -380,6 +382,60 @@ class Captain
 		return { "to" => { "min" => _min_to.round(4), "avg" => _avg_to.round(4), "max" => _max_to.round(4) }, "back" => { "min" => _min_back.round(4), "avg" => _avg_back.round(4), "max" => _max_back.round(4) }, "summary" => { "min" => _min.round(4), "avg" => _avg.round(4), "max" => _max.round(4) } }
 	end
 
+	# Read previous measurement CSV and summarize statistics
+	def stats_recalculate(file)
+		# Check file
+		return false unless File.exist?(file)
+
+		# Reset
+		_min_to = _min_back = false
+		_max_to = _max_back = false
+		_avg_to = _avg_back = 0
+
+		# Read line by line
+		iterations = 0
+		File.foreach(file).with_index do |line, iteration|
+			if iteration>0
+				# Read
+				_iteration, _stamp, _s2d_checkpoint, _s2d_copy, _s2d_restore, _s2d_total, _d2s_checkpoint, _d2s_copy, _d2s_restore, _d2s_total = line.split(';')
+				iterations += 1
+
+				# Fix types
+				_s2d_total = _s2d_total.to_f
+				_d2s_total = _d2s_total.to_f
+
+				# Collect stats
+				_min_to = _s2d_total if (iteration==1 || _s2d_total<_min_to)
+				_min_back = _d2s_total if (iteration==1 || _d2s_total<_min_back)
+				_max_to = _s2d_total if (iteration==1 || _s2d_total>_max_to)
+				_max_back = _d2s_total if (iteration==1 || _d2s_total>_max_back)
+				_avg_to += _s2d_total
+				_avg_back += _d2s_total
+			end
+		end
+
+		# Finalize statistics
+		_min = [_min_to, _min_back].min
+		_max = [_max_to, _max_back].max
+		_avg = (_avg_to + _avg_back) / (2 * iterations)
+		_avg_to /= iterations
+		_avg_back /= iterations
+
+		# Show results
+		puts "SOURCE >> DESTINATION: #{_min_to.round(3)} / #{_avg_to.round(3)} / #{_max_to.round(3)}"
+		puts "DESTINATION >> SOURCE: #{_min_back.round(3)} / #{_avg_back.round(3)} / #{_max_back.round(3)}"
+		puts "Summarized: #{_min.round(3)} / #{_avg.round(3)} / #{_max.round(3)}"
+
+		# Save to file
+		open(file.gsub(/(\.csv)$/, '.summary\1'), 'w') do |f|
+			f.puts("name;minimum;average;maximum")
+			f.puts("SOURCE to DESTINATION;#{_min_to.round(4)};#{_avg_to.round(4)};#{_max_to.round(4)}")
+			f.puts("DESTINATION to SOURCE;#{_min_back.round(4)};#{_avg_back.round(4)};#{_max_back.round(4)}")
+			f.puts("summarized;#{_min.round(4)};#{_avg.round(4)};#{_max.round(4)}")
+		end
+		return true
+	end
+
 	###################
 	# File management #
 	###################
@@ -410,7 +466,7 @@ class Captain
 		end
 
 		# Copy
-		if @capabilities["directssh"]["source"]
+		if @capabilities["directssh"]["source"] && @config["directssh"]
 			# Send file directly from source to destination
 			@source.file_send_remote(@ips["destination"], file_source, file_destination, _archiving)
 		else
@@ -443,7 +499,7 @@ class Captain
 		end
 
 		# Copy
-		if @capabilities["directssh"]["destination"]
+		if @capabilities["directssh"]["destination"] && @config["directssh"]
 			# Send file directly from source to destination
 			@destination.file_send_remote(@ips["source"], file_destination, file_source, _archiving)
 		else
@@ -518,7 +574,7 @@ class Captain
 
 		# Setup NFS
 		@nfs = false
-		if (@config["nfs"] && @config["nfs"]["enabled"] && @config["source"]["type"]==@config["destination"]["type"])
+		if (@config["nfs"] && @config["nfs"]["enabled"] && (@config["source"]["type"]==@config["destination"]["type"] || @config["nfs"]["force"]))
 			puts "[INFO] Setting up NFS shares" if $verbose
 			if @capabilities["nfs"]["source"]
 				# Source to destination

@@ -69,8 +69,8 @@ class CaptainGeneric
 		raise "No IP address specified" if !@config["generic"]["ip"]
 	end
 
-	# Check instance status
-	def _instance_status
+	# Check instance status (instance is provided for better compatibility)
+	def _instance_status(instance=nil)
 		return (_connection_status) ? "running" : "stopped"
 	end
 

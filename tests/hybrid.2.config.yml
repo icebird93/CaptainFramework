@@ -40,7 +40,7 @@ source:
 destination:
   os: "ubuntu"                      # OS
   version: "16.04"                  # OS version (optional)
-  type: "aws"                       # Type of destination server
+  type: "generic"                   # Type of destination server
 
   # How to setup machine
   setup:
@@ -50,17 +50,13 @@ destination:
   finish:
     destroy: false                  # Destroy instance automatically
 
-  # AWS target
-  aws:
-    type: "t2.micro"                # Instance type
-    ami: "97e953f8"                 # Amazon AMI ID (Ubuntu 16.04 LTS: 97e953f8, 17.04: 0114b06e)
-    key: "captain"                  # Keypair name (already added to AWS CLI)
-    security: "captain"             # Security group name
-    instance: "i-0f4283bc1d40a7884" # Instance ID (if already running)
+  # Generic target
+  generic:
+    ip: "193.224.20.67"              # Instance IPv4 address
 
   # SSH details
   ssh:
-    username: false                 # Username (false = automatic)
+    username: "aron"                # Username (false = automatic)
     key: "~/.ssh/captain/id_rsa"    # Keyfile used to SSH
 
   # Tuning

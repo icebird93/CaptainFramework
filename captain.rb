@@ -376,6 +376,9 @@ class Captain
 				f.puts("DESTINATION to SOURCE;#{_min_back.round(4)};#{_avg_back.round(4)};#{_max_back.round(4)}")
 				f.puts("summarized;#{_min.round(4)};#{_avg.round(4)};#{_max.round(4)}")
 			end
+		else
+			# No valid results
+			return false
 		end
 
 		# Finish

@@ -182,6 +182,7 @@ module CaptainBase
 
 		# Start busybox container with command
 		_id = command_send("([ \"$(sudo docker ps -a -f name=#{container} | grep '\\s#{container}$' | wc -l)\" -eq 0 ] || sudo docker rm -f #{container} &>/dev/null) && sudo docker run -d --name #{container} --security-opt seccomp=unconfined #{options} busybox #{command} | tail -n 1")
+		sleep(10)
 		return _id
 	end
 	def docker_create_command(container, command, options="")
@@ -191,6 +192,7 @@ module CaptainBase
 
 		# Create busybox container with command
 		_id = command_send("([ \"$(sudo docker ps -a -f name=#{container} | grep '\\s#{container}$' | wc -l)\" -eq 0 ] || sudo docker rm -f #{container} &>/dev/null) && sudo docker create --name #{container} --security-opt seccomp=unconfined #{options} busybox #{command} | tail -n 1")
+		sleep(10)
 		return _id
 	end
 
@@ -202,6 +204,7 @@ module CaptainBase
 
 		# Start image
 		_id = command_send("([ \"$(sudo docker ps -a -f name=#{container} | grep '\\s#{container}$' | wc -l)\" -eq 0 ] || sudo docker rm -f #{container} &>/dev/null) && sudo docker run -d --name #{container} --security-opt seccomp=unconfined #{options} #{image} | tail -n 1")
+		sleep(10)
 		return _id
 	end
 	def docker_create_image(container, image, options="")
@@ -211,6 +214,7 @@ module CaptainBase
 
 		# Start image
 		_id = command_send("([ \"$(sudo docker ps -a -f name=#{container} | grep '\\s#{container}$' | wc -l)\" -eq 0 ] || sudo docker rm -f #{container} &>/dev/null) && sudo docker create --name #{container} --security-opt seccomp=unconfined #{options} #{image} | tail -n 1")
+		sleep(10)
 		return _id
 	end
 
@@ -414,7 +418,10 @@ module CaptainBase
 	# Initialize filesystem (create necessary folder and files)
 	def _init_filesystem
 		# Prepare temporary work directory
-		command_send("sudo rm -rf /tmp/.captain && mkdir -p /tmp/captain/transfers && mkdir -p /tmp/captain/checkpoints/export && mkdir -p /tmp/captain/checkpoints/import")
+		command_send("sudo rm -rf /tmp/.captain")
+		command_send("mkdir -p /tmp/captain/transfers")
+		command_send("mkdir -p /tmp/captain/checkpoints/export")
+		command_send("mkdir -p /tmp/captain/checkpoints/import")
 	end
 
 	# Check connection status
